@@ -205,9 +205,11 @@ that cannot update yet.
 
 `H3 Batch Plan` and `H3 Batch Commit` add an unattended layer without
 changing the supervised Timeline workflow. Start from
-[`examples/h3_batch.yaml`](examples/h3_batch.yaml), place the manifest in
-ComfyUI's input folder (or use an absolute path), then load the ready-wired
-`007A-batch` workflow. In a custom workflow, wire:
+[`examples/h3_batch.yaml`](examples/h3_batch.yaml), load the ready-wired
+`007A-batch` workflow, and paste the complete file into the plan node's
+multiline `manifest_yaml` field. Pasted YAML takes precedence over
+`manifest_path`; leave the field empty if you prefer a path relative to
+ComfyUI's input folder or an absolute path. In a custom workflow, wire:
 
 ```
 Batch Plan prompt/negative_prompt -> the two text encoders

@@ -62,7 +62,8 @@ def plan_node():
     inputs = []
     for name, input_type in (
             ("manifest_path", "STRING"), ("batch_id", "STRING"),
-            ("base_folder", "STRING"), ("base_seed", "INT")):
+            ("base_folder", "STRING"), ("base_seed", "INT"),
+            ("manifest_yaml", "STRING")):
         inputs.append({
             "localized_name": name,
             "name": name,
@@ -81,8 +82,8 @@ def plan_node():
     return {
         "id": PLAN_ID,
         "type": "H3BatchPlan",
-        "pos": [-1040, 5380],
-        "size": [470, 320],
+        "pos": [-1040, 5180],
+        "size": [470, 760],
         "flags": {},
         "order": 22,
         "mode": 0,
@@ -90,12 +91,13 @@ def plan_node():
         "outputs": outputs,
         "title": "H3 YAML Batch Plan — queue remaining",
         "properties": {"Node name for S&R": "H3BatchPlan"},
-        "widgets_values": ["h3_batch.yaml", "film-v1", "my_project", 0],
+        "widgets_values": ["h3_batch.yaml", "film-v1", "my_project", 0, ""],
         "widgets_values_named": {
             "manifest_path": "h3_batch.yaml",
             "batch_id": "film-v1",
             "base_folder": "my_project",
             "base_seed": 0,
+            "manifest_yaml": "",
         },
         "color": "#243342",
         "bgcolor": "#354b60",
@@ -152,7 +154,7 @@ def note_node():
     return {
         "id": NOTE_ID,
         "type": "MarkdownNote",
-        "pos": [-1040, 6230],
+        "pos": [-1040, 6480],
         "size": [470, 310],
         "flags": {},
         "order": 0,
@@ -163,8 +165,9 @@ def note_node():
         "properties": {"Node name for S&R": "MarkdownNote"},
         "widgets_values": [
             "## Unattended YAML batch\n\n"
-            "1. Put `h3_batch.yaml` in ComfyUI's `input` folder, or enter an "
-            "absolute path in **H3 YAML Batch Plan**.\n"
+            "1. Paste the complete manifest into `manifest_yaml` on **H3 "
+            "YAML Batch Plan**. Alternatively, leave it empty and use "
+            "`manifest_path`.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"
             "3. Set the shared output `base_folder`.\n"
             "4. Set aspect ratio and megapixels in **Batch Prompt + "
@@ -203,7 +206,7 @@ def build():
     planner["outputs"][4]["links"] = [2722]
 
     prompt_input = node_by_id(workflow, 761)
-    prompt_input["pos"] = [-1040, 5730]
+    prompt_input["pos"] = [-1040, 5970]
     prompt_input["title"] = "Batch Prompt + Resolution"
     prompt_input["inputs"][0]["link"] = 3038
     prompt_input["inputs"][3]["link"] = 3039
@@ -226,6 +229,7 @@ def build():
 
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
+    ui_group["bounding"][3] = 2330
     workflow["groups"].append({
         "id": 34,
         "title": "Batch Checkpoint + Final Export",

@@ -57,6 +57,8 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn(commit["id"], targets["ticket"])
         self.assertEqual(self.links[commit["inputs"][0]["link"]][1],
                          save["id"])
+        self.assertIn("manifest_yaml",
+                      [input_["name"] for input_ in planner["inputs"]])
 
     def test_original_engine_settings_remain_present(self):
         types = [node["type"] for node in self.workflow["nodes"]]

@@ -287,6 +287,46 @@ class BatchTests(unittest.TestCase):
             self.batch.H3BatchPlan().plan(
                 path, "movie-v3", "movie", 0)
 
+    def test_pasted_yaml_plans_commits_and_resumes_without_a_file(self):
+        yaml_text = json.dumps(self.manifest())
+        planner = self.batch.H3BatchPlan()
+        first = planner.plan(
+            "", "inline-v1", "inline-movie", 40,
+            manifest_yaml=yaml_text)
+        self.assertEqual(first[0], "A")
+        self.assertEqual(first[2], 40)
+        ticket = json.loads(first[8])
+        self.assertTrue(ticket["manifest_inline"])
+        self.assertEqual(ticket["manifest_path"], "")
+        self.assertEqual(ticket["total"], 3)
+
+        result = self.batch.H3BatchCommit().commit(
+            self.saved_take("inline-movie/opening_00001.mp4"),
+            first[8], auto_export=False)
+        self.assertFalse(result["result"][1])
+
+        second = planner.plan(
+            "this-file-is-ignored.yaml", "inline-v1", "inline-movie", 40,
+            manifest_yaml=yaml_text)
+        self.assertEqual(second[0], "B")
+        self.assertEqual(second[2], 41)
+
+    def test_changed_pasted_yaml_does_not_reuse_checkpoint(self):
+        planner = self.batch.H3BatchPlan()
+        planner.plan("", "inline-v2", "inline-movie", 0,
+                     manifest_yaml=json.dumps(self.manifest()))
+        changed = self.manifest()
+        changed["clips"][0]["prompt"] = "changed"
+        with self.assertRaisesRegex(ValueError, "manifest changed"):
+            planner.plan("", "inline-v2", "inline-movie", 0,
+                         manifest_yaml=json.dumps(changed))
+
+    def test_pasted_yaml_widget_is_multiline_and_optional(self):
+        inputs = self.batch.H3BatchPlan.INPUT_TYPES()
+        config = inputs["optional"]["manifest_yaml"][1]
+        self.assertTrue(config["multiline"])
+        self.assertFalse(config["dynamicPrompts"])
+
 
 if __name__ == "__main__":
     unittest.main()
