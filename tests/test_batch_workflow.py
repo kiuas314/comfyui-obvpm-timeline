@@ -61,6 +61,8 @@ class BatchWorkflowTests(unittest.TestCase):
                          save["id"])
         self.assertIn("manifest_yaml",
                       [input_["name"] for input_ in planner["inputs"]])
+        self.assertIn("run_selection",
+                      [input_["name"] for input_ in planner["inputs"]])
         self.assertIn("add_to_timeline",
                       [input_["name"] for input_ in commit["inputs"]])
         self.assertTrue(commit["widgets_values_named"]["add_to_timeline"])
@@ -134,7 +136,7 @@ class BatchWorkflowTests(unittest.TestCase):
                        if node["type"] == "H3BatchPlan")
         groups = {group["title"]: group
                   for group in self.workflow["groups"]}
-        plan_group = groups["H3 YAML Batch Plan"]["bounding"]
+        plan_group = groups["H3 Story + Clip Editor"]["bounding"]
         ui_group = groups["OBVPM H3 YAML Batch UI [restore]"]["bounding"]
         self.assertEqual(plan_group[1], ui_group[1])
         self.assertEqual(plan_group[3], ui_group[3])

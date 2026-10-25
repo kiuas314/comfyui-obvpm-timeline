@@ -9,9 +9,16 @@ The compiled layout follows MiniMax's
 
 The complete example is [`examples/h3_batch.yaml`](../examples/h3_batch.yaml).
 
-Paste that complete YAML directly into H3 Batch Plan's multiline
-`manifest_yaml` field. It is stored with the ComfyUI workflow, so no separate
-manifest file is required.
+Import the complete YAML into **H3 Story + Clip Editor**, or paste it into the
+Raw YAML tab. It is stored with the ComfyUI workflow, so no separate manifest
+file is required. Export writes the current visual-editor document back to a
+portable YAML file.
+
+The clip list is divided into segments at every `context: none` root. Select a
+clip to edit its blocks, enable or disable optional values, and inspect the
+exact compiled H3 prompt. Generation can queue only that clip, its complete
+root segment, or every unfinished clip in the movie. Completed takes are added
+to Timeline automatically for whole-story review and the later upscale pass.
 
 The node is prefilled with a short castle smoke test. `castle_establishing`
 uses `context: none`; `ballroom_dance` starts a second independent root; and
@@ -22,9 +29,10 @@ the example first.
 Each successful H3 Batch Commit is automatically offered to the open Timeline
 using the same lineage-aware placement as the Result Preview's **+ add to
 timeline** button. Disable `add_to_timeline` on the commit node if you want to
-keep completed takes off the Timeline. The ready-wired batch workflow also
-disables the upscale result preview, because its batch path runs generation
-only; generated takes remain in the normal generation result preview.
+keep completed takes off the Timeline. The ready-wired workflow keeps
+generation and upscale previews separate. Once the chosen clips are in
+Timeline, enable Timeline upscaling and use ComfyUI's normal Queue/Run action
+for the upscale pass.
 
 ## Authoring model
 
@@ -168,8 +176,9 @@ overall_soundscape: ...
 non_diegetic_music: ...
 ```
 
-The exact compiled prompt is emitted from `H3 Batch Plan` and saved in the
-take's metadata. The YAML remains the editable source of truth. For a special
+The exact compiled prompt is visible in the story editor, emitted from
+`H3 Batch Plan`, and saved in the take's metadata. The YAML remains the
+portable source of truth. For a special
 case that should bypass compilation entirely, use:
 
 ```yaml

@@ -206,9 +206,10 @@ that cannot update yet.
 `H3 Batch Plan` and `H3 Batch Commit` add an unattended layer without
 changing the supervised Timeline workflow. Start from
 [`examples/h3_batch.yaml`](examples/h3_batch.yaml), load the ready-wired
-`007A-batch` workflow, and paste the complete file into the plan node's
-multiline `manifest_yaml` field. The YAML is stored directly inside the ComfyUI
-workflow. The field starts with a three-clip smoke test: an independent castle
+`007A-batch` workflow, and import the file into **H3 Story + Clip Editor** (or
+paste it in the editor's Raw YAML tab). The YAML is stored directly inside the
+ComfyUI workflow and can be exported again at any time. The editor starts with
+a three-clip smoke test: an independent castle
 exterior, then two context-linked ballroom clips in which a prince and princess
 dance and end with a kiss. The princess is bound to reference Picture 1 and the
 prince to Picture 2. Replace it with your own screenplay when ready. In a
@@ -224,9 +225,12 @@ Batch Plan metadata             -> that Save node's metadata
 Save path + Batch Plan ticket   -> H3 Batch Commit
 ```
 
-Click **queue remaining** on H3 Batch Plan (or set ComfyUI's queue batch count
-to the number of remaining clips and Run). Each queued execution reads the
-checkpoint again, so it selects the next clip rather than repeating the first.
+Select a clip and click **generate this clip**, **generate this segment**, or
+**generate whole movie**. A segment begins at a `context: none` root and
+includes the following context-linked clips up to the next root. Each queued
+execution reads the checkpoint again, so it selects the next clip rather than
+repeating the first. The editor exposes every optional clip block with an
+enable switch and shows the exact compiled H3 prompt for the selected clip.
 The commit happens only after the MP4
 and `.mctx.safetensors` sidecar exist. Cancelling or losing a run leaves that
 clip active; running again resumes it. Keep `batch_id` to resume, or change it
@@ -234,9 +238,10 @@ to start a new run without deleting the earlier takes.
 
 By default, every committed take is added to the open Timeline through the
 same lineage-aware operation as clicking **+ add to timeline** in Result
-Preview. Turn off `add_to_timeline` on H3 Batch Commit to disable this. The
-batch workflow's inactive upscale preview is muted so generated takes appear
-only in the normal generation result window.
+Preview. Turn off `add_to_timeline` on H3 Batch Commit to disable this.
+Generated takes appear in the normal result window. After generation, enable
+upscaling in Timeline and use the normal Queue/Run action; the upscaled result
+appears in the separate upscale result window.
 
 `context: none` makes a fresh root (a hard cut), `context: previous` extends
 the prior manifest clip, and `context: some_earlier_id` branches from any

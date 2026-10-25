@@ -68,7 +68,8 @@ def plan_node():
     inputs = []
     for name, input_type in (
             ("manifest_yaml", "STRING"), ("batch_id", "STRING"),
-            ("base_folder", "STRING"), ("base_seed", "INT")):
+            ("base_folder", "STRING"), ("base_seed", "INT"),
+            ("run_selection", "STRING")):
         inputs.append({
             "localized_name": name,
             "name": name,
@@ -94,15 +95,16 @@ def plan_node():
         "mode": 0,
         "inputs": inputs,
         "outputs": outputs,
-        "title": "H3 YAML Batch Plan — queue remaining",
+        "title": "H3 Story + Clip Editor",
         "properties": {"Node name for S&R": "H3BatchPlan"},
         "widgets_values": [DEFAULT_MANIFEST_YAML, DEFAULT_BATCH_ID,
-                           DEFAULT_BASE_FOLDER, 0],
+                           DEFAULT_BASE_FOLDER, 0, "[]"],
         "widgets_values_named": {
             "manifest_yaml": DEFAULT_MANIFEST_YAML,
             "batch_id": DEFAULT_BATCH_ID,
             "base_folder": DEFAULT_BASE_FOLDER,
             "base_seed": 0,
+            "run_selection": "[]",
         },
         "color": "#243342",
         "bgcolor": "#354b60",
@@ -206,19 +208,23 @@ def note_node():
         "title": "YAML batch quick start",
         "properties": {"Node name for S&R": "MarkdownNote"},
         "widgets_values": [
-            "## Unattended YAML batch\n\n"
+            "## Story editor + unattended generation\n\n"
             "A three-clip castle dance demo is already loaded. It contains "
             "one independent establishing shot, then two ballroom clips that "
             "share context and end with a kiss.\n\n"
             "Load the princess reference into **Picture 1** and the prince "
             "reference into **Picture 2** in the Refs group.\n\n"
-            "1. Run the demo as-is, or replace all of `manifest_yaml` on "
-            "**H3 YAML Batch Plan** with your screenplay.\n"
+            "1. Edit clips and optional blocks in **H3 Story + Clip "
+            "Editor**, or import an existing YAML screenplay.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"
             "3. Set **Shared Batch + Upscale Settings** once.\n"
             "4. Set aspect ratio and megapixels in **Batch Prompt + "
             "Resolution**. Leave Timeline upscaling off.\n"
-            "5. Click **queue remaining** on the plan node.\n\n"
+            "5. Select a clip, then generate that clip, its root-shot "
+            "segment, or the whole movie.\n\n"
+            "The compiled H3 prompt is shown beneath every clip for "
+            "debugging. YAML remains available for import, export, and "
+            "advanced source editing.\n\n"
             "Each clip is checkpointed only after its MP4 and context sidecar "
             "are saved, then added to Timeline through the same lineage-aware "
             "operation as its manual add button. The final cut exports "
@@ -305,7 +311,7 @@ def build():
     ui_group["bounding"][3] = 2330
     workflow["groups"].append({
         "id": 35,
-        "title": "H3 YAML Batch Plan",
+        "title": "H3 Story + Clip Editor",
         "bounding": [-2690, 4570, 1390, 2330],
         "color": "#3f789e",
         "flags": {},

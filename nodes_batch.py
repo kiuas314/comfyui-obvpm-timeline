@@ -214,6 +214,99 @@ def load_manifest(yaml_text):
     return manifest, hashlib.sha256(canonical).hexdigest(), source
 
 
+def inspect_manifest(yaml_text):
+    """Return the editable document plus compiler output for the UI."""
+    raw = _load_yaml(str(yaml_text or ""), "<pasted YAML>")
+    if isinstance(raw, list):
+        raw = {"clips": raw}
+    document = _as_mapping(raw, "the manifest root")
+    manifest = parse_manifest(yaml_text, "<pasted YAML>")
+    segments = []
+    current = None
+    for clip in manifest["clips"]:
+        if current is None or clip["context"] == "none":
+            current = {"id": clip["id"], "clips": []}
+            segments.append(current)
+        current["clips"].append(clip["id"])
+    clips = []
+    segment_by_clip = {
+        clip_id: segment["id"] for segment in segments
+        for clip_id in segment["clips"]
+    }
+    for index, clip in enumerate(manifest["clips"]):
+        clips.append({
+            "id": clip["id"], "index": index,
+            "context": clip["context"],
+            "duration_seconds": clip["duration_seconds"],
+            "compiled_prompt": clip["prompt"],
+            "negative_prompt": clip["negative_prompt"],
+            "segment": segment_by_clip[clip["id"]],
+        })
+    return {"document": document, "version": manifest["version"],
+            "clips": clips, "segments": segments}
+
+
+def manifest_to_yaml(document):
+    """Validate an editor document and emit stable, human-readable YAML."""
+    try:
+        import yaml
+    except ImportError:
+        raise RuntimeError("H3 batch manifest export needs PyYAML.")
+    if isinstance(document, list):
+        document = {"clips": document}
+    document = _as_mapping(document, "the editor document")
+    text = yaml.safe_dump(document, sort_keys=False, allow_unicode=True,
+                          default_flow_style=False, width=100)
+    parse_manifest(text, "editor document")
+    return text
+
+
+def _selection_ids(manifest, selection):
+    """Resolve the UI's JSON clip-id list; an empty list means all clips."""
+    if selection in (None, "", []):
+        requested = []
+    elif isinstance(selection, list):
+        requested = selection
+    else:
+        try:
+            requested = json.loads(str(selection))
+        except (TypeError, ValueError):
+            raise ValueError("H3 batch: run_selection must be a JSON list.")
+    if not isinstance(requested, list):
+        raise ValueError("H3 batch: run_selection must be a JSON list.")
+    known = [clip["id"] for clip in manifest["clips"]]
+    if not requested:
+        return known
+    requested = [str(item) for item in requested]
+    unknown = sorted(set(requested) - set(known))
+    if unknown:
+        raise ValueError("H3 batch: run_selection names unknown clips: %s."
+                         % ", ".join(unknown))
+    wanted = set(requested)
+    return [clip_id for clip_id in known if clip_id in wanted]
+
+
+def _context_id(manifest, index):
+    context_id = manifest["clips"][index]["context"]
+    if context_id == "previous":
+        return manifest["clips"][index - 1]["id"] if index else "none"
+    return context_id
+
+
+def _validate_selection_dependencies(manifest, selected, completed):
+    selected_set = set(selected)
+    for index, clip in enumerate(manifest["clips"]):
+        if clip["id"] not in selected_set or clip["id"] in completed:
+            continue
+        dependency = _context_id(manifest, index)
+        if (dependency != "none" and dependency not in completed
+                and dependency not in selected_set):
+            raise ValueError(
+                "H3 batch: clip %r needs unfinished context %r. Generate its "
+                "segment, the whole movie, or its context clip first."
+                % (clip["id"], dependency))
+
+
 def _folder_text(value):
     return str(value or "").strip().replace("\\", "/").strip("/")
 
@@ -304,19 +397,24 @@ def _relative_clip(path):
     return os.path.relpath(absolute, root).replace(os.sep, "/")
 
 
-def batch_status(manifest_yaml, batch_id, base_folder):
+def batch_status(manifest_yaml, batch_id, base_folder, run_selection="[]"):
     manifest, digest, source = load_manifest(manifest_yaml)
     path = _state_path(base_folder, batch_id)
     with _LOCK:
         state = _validated_state(path, batch_id, digest, source)
         completed = _completed_map(state)
-        pending = [c["id"] for c in manifest["clips"]
-                   if c["id"] not in completed]
+        selected = _selection_ids(manifest, run_selection)
+        _validate_selection_dependencies(manifest, selected, completed)
+        pending = [clip_id for clip_id in selected
+                   if clip_id not in completed]
         return {
-            "total": len(manifest["clips"]),
-            "completed": len(completed),
+            "total": len(selected),
+            "completed": len(selected) - len(pending),
             "remaining": len(pending),
             "next": pending[0] if pending else None,
+            "selected": selected,
+            "global_total": len(manifest["clips"]),
+            "global_completed": len(completed),
             "active": (state.get("active") or {}).get("id"),
             "final_path": state.get("final_path") or "",
             "export_error": state.get("export_error") or "",
@@ -337,13 +435,38 @@ def register():
             found = await asyncio.to_thread(
                 batch_status, str(data.get("manifest_yaml", "")),
                 str(data.get("batch_id", "")),
-                str(data.get("base_folder", "")))
+                str(data.get("base_folder", "")),
+                data.get("run_selection", "[]"))
             # The absolute checkpoint path is useful in Python errors but is
             # not sent to a browser that only needs counts and state.
             found.pop("state_path", None)
             return web.json_response(found)
         except Exception as exc:
             _LOG.info("obvpm.h3: batch_status failed: %s", exc)
+            return web.json_response({"error": str(exc)}, status=400)
+
+    @PromptServer.instance.routes.post("/obvpm/h3/batch_inspect")
+    async def _batch_inspect(request):
+        import asyncio
+        try:
+            data = await request.json()
+            found = await asyncio.to_thread(
+                inspect_manifest, str(data.get("manifest_yaml", "")))
+            return web.json_response(found)
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
+    @PromptServer.instance.routes.post("/obvpm/h3/batch_serialize")
+    async def _batch_serialize(request):
+        import asyncio
+        try:
+            data = await request.json()
+            text = await asyncio.to_thread(
+                manifest_to_yaml, data.get("document"))
+            found = await asyncio.to_thread(inspect_manifest, text)
+            found["manifest_yaml"] = text
+            return web.json_response(found)
+        except Exception as exc:
             return web.json_response({"error": str(exc)}, status=400)
 
 
@@ -383,10 +506,10 @@ class H3BatchPlan:
                     "pin_specs", "base_folder", "filename_prefix",
                     "metadata", "ticket", "index", "total")
     DESCRIPTION = (
-        "Reads the next unfinished clip from YAML pasted into the node. Queue "
-        "this workflow once per remaining clip; H3 Batch Commit "
-        "checkpoints each successful save, so an interruption resumes the "
-        "same item.")
+        "Visual YAML story editor and scoped planner. It reads the next "
+        "unfinished clip in the selected clip, root segment, or whole movie. "
+        "H3 Batch Commit checkpoints each successful save, so an interruption "
+        "resumes the same item.")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -408,6 +531,10 @@ class H3BatchPlan:
                 "default": 0, "min": 0, "max": 2 ** 64 - 1,
                 "tooltip": "Used as base_seed + clip index when a clip has "
                            "no explicit seed."}),
+            "run_selection": ("STRING", {
+                "default": "[]",
+                "tooltip": "Editor-controlled JSON list of clip ids. An "
+                           "empty list means the whole movie."}),
         }}
 
     @classmethod
@@ -415,19 +542,23 @@ class H3BatchPlan:
         # The checkpoint changes between otherwise-identical queued prompts.
         return float("nan")
 
-    def plan(self, manifest_yaml, batch_id, base_folder, base_seed=0):
+    def plan(self, manifest_yaml, batch_id, base_folder, base_seed=0,
+             run_selection="[]"):
         compat.require()
         manifest, digest, source = load_manifest(manifest_yaml)
         state_path = _state_path(base_folder, batch_id)
         with _LOCK:
             state = _validated_state(state_path, batch_id, digest, source)
             completed = _completed_map(state)
+            selected = _selection_ids(manifest, run_selection)
+            _validate_selection_dependencies(manifest, selected, completed)
             index = next((i for i, c in enumerate(manifest["clips"])
-                          if c["id"] not in completed), None)
+                          if c["id"] in selected
+                          and c["id"] not in completed), None)
             if index is None:
                 raise RuntimeError(
-                    "H3 batch %r is complete (%d/%d clips)."
-                    % (batch_id, len(completed), len(manifest["clips"])))
+                    "H3 batch %r selection is complete (%d/%d selected "
+                    "clips)." % (batch_id, len(selected), len(selected)))
             clip = manifest["clips"][index]
             active = state.get("active")
             if active and (active.get("id") != clip["id"]

@@ -152,6 +152,27 @@ class BatchTests(unittest.TestCase):
                          ["none", "previous", "opening"])
         self.assertEqual(got["clips"][1]["duration_seconds"], 8)
 
+    def test_inspection_exposes_compiled_prompts_and_root_segments(self):
+        data = self.structured_manifest()
+        data["clips"].append({
+            "id": "new_root", "context": "none",
+            "shot": {"action": "Dawn reaches the observatory."},
+        })
+        got = self.batch.inspect_manifest(json.dumps(data))
+        self.assertEqual([segment["clips"] for segment in got["segments"]],
+                         [["opening", "continue"], ["new_root"]])
+        self.assertIn("integrated_multimodal_description",
+                      got["clips"][0]["compiled_prompt"])
+        self.assertEqual(got["document"]["project"]["language"], "English")
+
+    @unittest.skipUnless(importlib.util.find_spec("yaml"), "PyYAML not installed")
+    def test_editor_document_round_trips_as_yaml(self):
+        text = self.batch.manifest_to_yaml(self.structured_manifest())
+        self.assertIn("clips:", text)
+        got = self.batch.inspect_manifest(text)
+        self.assertEqual([clip["id"] for clip in got["clips"]],
+                         ["opening", "continue"])
+
     def test_structured_manifest_compiles_h3_sections(self):
         got = self.batch.parse_manifest(json.dumps(self.structured_manifest()))
         first = got["clips"][0]
@@ -266,6 +287,26 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(second[2], 101)
         self.assertEqual(second[4][0]["source_path"],
                          "movie/opening_00001.mp4")
+
+    def test_selection_can_generate_one_root_or_a_whole_segment(self):
+        manifest_yaml = json.dumps(self.manifest())
+        planner = self.batch.H3BatchPlan()
+        root = planner.plan(
+            manifest_yaml, "selected-root", "movie", 10,
+            json.dumps(["opening"]))
+        self.assertEqual(root[0], "A")
+
+        first = planner.plan(
+            manifest_yaml, "selected-segment", "movie", 10,
+            json.dumps(["opening", "middle"]))
+        self.assertEqual(first[0], "A")
+
+    def test_selection_refuses_continuation_without_its_context(self):
+        manifest_yaml = json.dumps(self.manifest())
+        with self.assertRaisesRegex(ValueError, "unfinished context"):
+            self.batch.batch_status(
+                manifest_yaml, "selected-one", "movie",
+                json.dumps(["middle"]))
 
     def test_named_context_and_final_sequence(self):
         manifest_yaml = json.dumps(self.manifest())
