@@ -159,7 +159,7 @@ def note_node():
         "id": NOTE_ID,
         "type": "MarkdownNote",
         "pos": [-1040, 6480],
-        "size": [470, 310],
+        "size": [470, 350],
         "flags": {},
         "order": 0,
         "mode": 0,
@@ -172,6 +172,8 @@ def note_node():
             "A three-clip castle dance demo is already loaded. It contains "
             "one independent establishing shot, then two ballroom clips that "
             "share context and end with a kiss.\n\n"
+            "Load the princess reference into **Picture 1** and the prince "
+            "reference into **Picture 2** in the Refs group.\n\n"
             "1. Run the demo as-is, or replace all of `manifest_yaml` on "
             "**H3 YAML Batch Plan** with your screenplay.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"

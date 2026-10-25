@@ -1,6 +1,6 @@
 """Small structured screenplay prefilled in H3 Batch Plan."""
 
-DEFAULT_BATCH_ID = "castle-dance-v1"
+DEFAULT_BATCH_ID = "castle-dance-ref2v-v1"
 DEFAULT_BASE_FOLDER = "castle_dance_test"
 
 DEFAULT_MANIFEST_YAML = """version: 2
@@ -24,23 +24,25 @@ project:
     hands, duplicate people, inconsistent costumes, cartoon, low quality
 
 characters:
-  prince:
-    name: Prince Adrian
-    appearance: >-
-      a handsome 27-year-old man with warm brown eyes, wavy dark hair, a
-      clean-shaven face, and an athletic build
-    wardrobe: >-
-      a fitted midnight-blue velvet military jacket with fine gold embroidery,
-      a white high-collared shirt, dark formal trousers, and polished boots
-
   princess:
     name: Princess Elara
+    reference_image: 1
     appearance: >-
       an elegant 25-year-old woman with expressive green eyes, softly curled
       chestnut hair, and a delicate oval face
     wardrobe: >-
       an ivory silk ball gown embroidered with tiny silver stars, long white
       gloves, a small diamond tiara, and a moonstone necklace
+
+  prince:
+    name: Prince Adrian
+    reference_image: 2
+    appearance: >-
+      a handsome 27-year-old man with warm brown eyes, wavy dark hair, a
+      clean-shaven face, and an athletic build
+    wardrobe: >-
+      a fitted midnight-blue velvet military jacket with fine gold embroidery,
+      a white high-collared shirt, dark formal trousers, and polished boots
 
 locations:
   castle_exterior:
@@ -93,7 +95,7 @@ clips:
   - id: ballroom_dance
     context: none
     location: grand_ballroom
-    cast: [prince, princess]
+    cast: [princess, prince]
     duration_seconds: 8
     shot:
       framing: full-body medium-wide two-shot
@@ -111,7 +113,7 @@ clips:
   - id: dance_to_kiss
     context: previous
     location: grand_ballroom
-    cast: [prince, princess]
+    cast: [princess, prince]
     duration_seconds: 8
     continuity:
       inherit_motion: true

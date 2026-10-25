@@ -1,7 +1,7 @@
 # Unattended H3 batches
 
-`H3 Batch Plan` compiles a version 2 YAML screenplay into the three fields in
-MiniMax H3's base prompt format, then emits one clip at a time. `H3 Batch
+`H3 Batch Plan` compiles a version 2 YAML screenplay into MiniMax H3's base
+prompt format, then emits one clip at a time. `H3 Batch
 Commit` checkpoints only after the MP4 and its `.mctx.safetensors` sidecar
 exist. Version 1 manifests containing a raw `prompt` per clip remain valid.
 The compiled layout follows MiniMax's
@@ -27,7 +27,9 @@ particular clip:
 - `project` holds language, visual style, global story context, continuity and
   the negative prompt.
 - `characters` is the character bible. A speaking character has one stable
-  `speaker_id` (`S1`, `S2`, etc.) for the whole film.
+  `speaker_id` (`S1`, `S2`, etc.) for the whole film. For Ref2V, assign
+  `reference_image: 1` to the character shown in Picture 1,
+  `reference_image: 2` for Picture 2, and so on.
 - `locations` holds reusable visual and ambient-sound descriptions.
 - `audio` holds default or named non-diegetic music descriptions.
 - `defaults` holds generation/context settings and common cast, location,
@@ -39,6 +41,31 @@ Only characters named in a clip or shot's `cast` are written into that
 prompt. Their appearance, wardrobe and voice are repeated because every clip
 is a fresh text-conditioning run, even when its latent context continues a
 previous take.
+
+Reference-bound cast members also produce H3 subject definitions:
+
+```yaml
+characters:
+  princess:
+    name: Princess Elara
+    reference_image: 1
+    appearance: an elegant young woman with green eyes
+  prince:
+    name: Prince Adrian
+    reference_image: 2
+    appearance: a young man with warm brown eyes and dark hair
+```
+
+This compiles into:
+
+```text
+subject_definitions:
+<Subject 1> is Princess Elara depicted in <Picture 1>.
+<Subject 2> is Prince Adrian depicted in <Picture 2>.
+```
+
+Each picture number can belong to only one character. The workflow's first
+reference-image input is Picture 1, the second is Picture 2, and so on.
 
 Values resolve from broadest to narrowest:
 
@@ -120,9 +147,13 @@ Supported movements are `static`, `push_in`, `pull_out`, `zoom_in`,
 
 ## Compiled output
 
-Every structured clip becomes:
+Every structured clip contains the three core sections below. Clips with
+reference-bound cast also begin with `subject_definitions`:
 
 ```text
+subject_definitions:
+<Subject 1> is a character depicted in <Picture 1>.
+
 integrated_multimodal_description: [Shot 1] ...
 
 overall_soundscape: ...

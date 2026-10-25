@@ -210,8 +210,9 @@ changing the supervised Timeline workflow. Start from
 multiline `manifest_yaml` field. The YAML is stored directly inside the ComfyUI
 workflow. The field starts with a three-clip smoke test: an independent castle
 exterior, then two context-linked ballroom clips in which a prince and princess
-dance and end with a kiss. Replace it with your own screenplay when ready. In
-a custom workflow, wire:
+dance and end with a kiss. The princess is bound to reference Picture 1 and the
+prince to Picture 2. Replace it with your own screenplay when ready. In a
+custom workflow, wire:
 
 ```
 Batch Plan prompt/negative_prompt -> the two text encoders
@@ -253,7 +254,8 @@ count again.
 Manifest version 2 can define project-wide visual continuity, a reusable
 character bible with stable speaker IDs, locations, soundscapes, named music,
 camera direction, dialogue and timed internal shots. H3 Batch Plan compiles
-those fields into H3's `integrated_multimodal_description`,
+those fields into H3's optional `subject_definitions`,
+`integrated_multimodal_description`,
 `overall_soundscape` and `non_diegetic_music` prompt layout. See the
 [batch authoring guide](docs/h3-batch.md). Version 1 raw-prompt manifests stay
 compatible, and version 2 also offers `raw_prompt` as a per-clip escape hatch.

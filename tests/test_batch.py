@@ -204,6 +204,24 @@ class BatchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "both use S1"):
             self.batch.parse_manifest(json.dumps(data))
 
+    def test_reference_images_compile_to_h3_subject_definitions(self):
+        data = self.structured_manifest()
+        data["characters"]["mara"]["reference_image"] = 1
+        parsed = self.batch.parse_manifest(json.dumps(data))
+        prompt = parsed["clips"][0]["prompt"]
+        self.assertIn("subject_definitions:\n<Subject 1> is Mara Venn "
+                      "depicted in <Picture 1>.", prompt)
+        self.assertIn("<Subject 1> (Mara Venn) (S1) is", prompt)
+
+    def test_duplicate_reference_image_is_refused(self):
+        data = self.structured_manifest()
+        data["characters"]["mara"]["reference_image"] = 1
+        data["characters"]["elias"] = {
+            "name": "Elias", "reference_image": 1,
+        }
+        with self.assertRaisesRegex(ValueError, "both use Picture 1"):
+            self.batch.parse_manifest(json.dumps(data))
+
     def test_structured_dialogue_speaker_must_be_in_cast(self):
         data = self.structured_manifest()
         data["clips"][0]["cast"] = []
@@ -319,8 +337,13 @@ class BatchTests(unittest.TestCase):
             [clip["id"] for clip in parsed["clips"]],
             ["castle_establishing", "ballroom_dance", "dance_to_kiss"])
         self.assertIn("tender, unhurried kiss", parsed["clips"][2]["prompt"])
+        self.assertIn("<Subject 1> is Princess Elara depicted in <Picture 1>",
+                      parsed["clips"][1]["prompt"])
+        self.assertIn("<Subject 2> is Prince Adrian depicted in <Picture 2>",
+                      parsed["clips"][1]["prompt"])
         inputs = self.batch.H3BatchPlan.INPUT_TYPES()["required"]
-        self.assertEqual(inputs["batch_id"][1]["default"], "castle-dance-v1")
+        self.assertEqual(inputs["batch_id"][1]["default"],
+                         "castle-dance-ref2v-v1")
         self.assertEqual(inputs["base_folder"][1]["default"],
                          "castle_dance_test")
 

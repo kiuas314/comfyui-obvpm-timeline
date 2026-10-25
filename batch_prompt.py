@@ -1,9 +1,10 @@
 """Structured YAML -> MiniMax H3 base prompt compiler.
 
 This module has no ComfyUI imports so the authoring format can be validated in
-small unit tests and by external tools.  It intentionally targets the three
-core fields used by H3's base T2VA/I2VA/FL2VA/L2VA prompt format. Reference
-asset alignment is still owned by the workflow that supplies those assets.
+small unit tests and by external tools. It targets H3's base
+T2VA/I2VA/FL2VA/L2VA prompt format, including explicit Subject-to-Picture
+bindings for reference-image characters. Reference asset order is owned by
+the workflow that supplies those images.
 """
 
 import re
@@ -14,7 +15,9 @@ PROJECT_FIELDS = {
     "title", "prompt_format", "language", "visual_style", "story_context",
     "continuity", "negative_prompt",
 }
-CHARACTER_FIELDS = {"name", "speaker_id", "appearance", "wardrobe", "voice"}
+CHARACTER_FIELDS = {
+    "name", "speaker_id", "reference_image", "appearance", "wardrobe", "voice",
+}
 LOCATION_FIELDS = {"description", "soundscape"}
 AUDIO_FIELDS = {"default_soundscape", "default_music", "music"}
 STRUCTURED_DEFAULT_FIELDS = {"cast", "location", "music", "camera", "soundscape"}
@@ -87,13 +90,34 @@ def normalize_globals(root):
 
     characters = {}
     speaker_ids = {}
+    reference_images = {}
     for key, value in _mapping(root.get("characters"), "characters").items():
         char_id = _clean(key)
         if not char_id:
             raise ValueError("H3 batch: character ids cannot be empty.")
         char = _mapping(value, "character %r" % char_id)
         _unknown(char, CHARACTER_FIELDS, "character %r" % char_id)
-        char = {field: _clean(char.get(field)) for field in CHARACTER_FIELDS}
+        char = {field: _clean(char.get(field)) for field in CHARACTER_FIELDS
+                if field != "reference_image"}
+        reference_image = value.get("reference_image")
+        if reference_image in (None, ""):
+            reference_image = None
+        else:
+            try:
+                reference_image = int(reference_image)
+            except (TypeError, ValueError):
+                raise ValueError("H3 batch: character %r reference_image must "
+                                 "be a picture number from 1 to 9." % char_id)
+            if not 1 <= reference_image <= 9:
+                raise ValueError("H3 batch: character %r reference_image must "
+                                 "be a picture number from 1 to 9." % char_id)
+            if reference_image in reference_images:
+                raise ValueError(
+                    "H3 batch: characters %r and %r both use Picture %d."
+                    % (reference_images[reference_image], char_id,
+                       reference_image))
+            reference_images[reference_image] = char_id
+        char["reference_image"] = reference_image
         char["name"] = char["name"] or char_id.replace("_", " ").title()
         sid = char["speaker_id"].strip("()")
         if sid and not _SPEAKER_RE.match(sid):
@@ -220,15 +244,18 @@ def _character(char_id, globals_, overrides):
     _unknown(override, CHARACTER_FIELDS,
              "character_overrides.%s" % char_id)
     for key, value in override.items():
-        if key == "speaker_id":
+        if key in ("speaker_id", "reference_image"):
             raise ValueError("H3 batch: character_overrides cannot change a "
-                             "stable speaker_id.")
+                             "stable speaker_id or reference_image.")
         char[key] = _clean(value)
     return char
 
 
 def _character_definition(char):
-    label = char["name"]
+    if char.get("reference_image"):
+        label = "<Subject %d> (%s)" % (char["reference_image"], char["name"])
+    else:
+        label = char["name"]
     if char.get("speaker_id"):
         label += " (%s)" % char["speaker_id"]
     parts = []
@@ -436,7 +463,21 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                       "Natural environmental ambience consistent with the "
                       "described scene.")
     music = _music(clip.get("music", defaults.get("music")), globals_["audio"])
-    return ("integrated_multimodal_description: %s\n\n"
+    subjects = []
+    for char_id in sorted(
+            defined,
+            key=lambda one: (globals_["characters"][one].get(
+                "reference_image") or 999, one)):
+        char = _character(char_id, globals_, overrides)
+        picture = char.get("reference_image")
+        if picture:
+            subjects.append("<Subject %d> is %s depicted in <Picture %d>."
+                            % (picture, char["name"], picture))
+    subject_block = ""
+    if subjects:
+        subject_block = "subject_definitions:\n%s\n\n" % "\n".join(subjects)
+
+    return ("%sintegrated_multimodal_description: %s\n\n"
             "overall_soundscape: %s\n\n"
             "non_diegetic_music: %s"
-            % ("\n\n".join(paragraphs), soundscape, music))
+            % (subject_block, "\n\n".join(paragraphs), soundscape, music))
