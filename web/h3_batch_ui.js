@@ -7,6 +7,23 @@ function widgetValue(node, name) {
     return node.widgets?.find((widget) => widget.name === name)?.value ?? "";
 }
 
+function inputValue(node, name) {
+    const index = node.inputs?.findIndex((input) => input.name === name) ?? -1;
+    if (index >= 0 && node.inputs[index]?.link != null) {
+        try {
+            const source = node.getInputNode?.(index);
+            if (source) {
+                const exact = widgetValue(source, name);
+                if (exact !== "") return exact;
+                return source.widgets?.[0]?.value ?? "";
+            }
+        } catch (error) {
+            console.debug("[obvpm h3] could not read linked batch input", error);
+        }
+    }
+    return widgetValue(node, name);
+}
+
 function setButton(button, label, disabled = false) {
     button.name = label;
     button.disabled = disabled;
@@ -31,7 +48,7 @@ app.registerExtension({
                                 body: JSON.stringify({
                                     manifest_yaml: widgetValue(node, "manifest_yaml"),
                                     batch_id: widgetValue(node, "batch_id"),
-                                    base_folder: widgetValue(node, "base_folder"),
+                                    base_folder: inputValue(node, "base_folder"),
                                 }),
                             });
                         const status = await response.json();

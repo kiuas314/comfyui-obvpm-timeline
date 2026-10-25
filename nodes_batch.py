@@ -347,6 +347,33 @@ def register():
             return web.json_response({"error": str(exc)}, status=400)
 
 
+class H3BatchSettings:
+    CATEGORY = "obvpm/h3/batch"
+    FUNCTION = "settings"
+    RETURN_TYPES = ("STRING", "INT")
+    RETURN_NAMES = ("base_folder", "upscale_seed")
+    DESCRIPTION = (
+        "Values shared by batch generation and the later Timeline upscale "
+        "pass without depending on the per-clip planner.")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "base_folder": ("STRING", {
+                "default": DEFAULT_BASE_FOLDER,
+                "tooltip": "Output-relative folder shared by generation, "
+                           "batch checkpoints, and Timeline upscaling."}),
+            "upscale_seed": ("INT", {
+                "default": 0, "min": 0, "max": 2 ** 64 - 1,
+                "tooltip": "Seed used for the separate Timeline upscale "
+                           "pass. Per-clip generation seeds still come from "
+                           "the YAML plan."}),
+        }}
+
+    def settings(self, base_folder, upscale_seed=0):
+        return (_folder_text(base_folder), int(upscale_seed))
+
+
 class H3BatchPlan:
     CATEGORY = "obvpm/h3/batch"
     FUNCTION = "plan"

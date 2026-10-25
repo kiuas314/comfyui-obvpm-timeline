@@ -38,6 +38,8 @@ class BatchWorkflowTests(unittest.TestCase):
     def test_batch_path_drives_existing_generation_and_save_nodes(self):
         planner = next(node for node in self.workflow["nodes"]
                        if node["type"] == "H3BatchPlan")
+        settings = next(node for node in self.workflow["nodes"]
+                        if node["type"] == "H3BatchSettings")
         commit = next(node for node in self.workflow["nodes"]
                       if node["type"] == "H3BatchCommit")
         save = next(node for node in self.workflow["nodes"]
@@ -49,8 +51,8 @@ class BatchWorkflowTests(unittest.TestCase):
             for output in planner["outputs"]
         }
         self.assertIn(761, targets["prompt"])
-        self.assertIn(1468, targets["seed"])
-        self.assertIn(1449, targets["length"])
+        self.assertIn(1488, targets["seed"])
+        self.assertIn(797, targets["length"])
         self.assertIn(1479, targets["pin_specs"])
         self.assertIn(save["id"], targets["filename_prefix"])
         self.assertIn(save["id"], targets["metadata"])
@@ -62,6 +64,27 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn("add_to_timeline",
                       [input_["name"] for input_ in commit["inputs"]])
         self.assertTrue(commit["widgets_values_named"]["add_to_timeline"])
+        self.assertEqual(
+            self.links[planner["inputs"][2]["link"]][1], settings["id"])
+        folder_targets = [self.links[link_id][3]
+                          for link_id in settings["outputs"][0]["links"]]
+        self.assertIn(planner["id"], folder_targets)
+        self.assertIn(1221, folder_targets)
+        self.assertIn(1293, folder_targets)
+        self.assertNotIn(761, folder_targets)
+        self.assertEqual(self.links[2696][1], settings["id"])
+        self.assertEqual(self.links[2730][1], planner["id"])
+
+        # Commit must be in the generation group so Timeline's normal group
+        # muter removes the complete planner/commit chain from upscale runs.
+        generation = next(group for group in self.workflow["groups"]
+                          if group["id"] == 27)["bounding"]
+        x, y = commit["pos"]
+        width, height = commit["size"]
+        self.assertGreaterEqual(x, generation[0])
+        self.assertGreaterEqual(y, generation[1])
+        self.assertLessEqual(x + width, generation[0] + generation[2])
+        self.assertLessEqual(y + height, generation[1] + generation[3])
 
     def test_original_engine_settings_remain_present(self):
         types = [node["type"] for node in self.workflow["nodes"]]
@@ -70,8 +93,41 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn("MinimaxH3LatentUpscaler3D", types)
         self.assertIn("H3Timeline", types)
         upscale_preview = self.nodes[1342]
-        self.assertEqual(upscale_preview["mode"], 2)
-        self.assertIn("disabled in batch", upscale_preview["title"])
+        self.assertEqual(upscale_preview["mode"], 0)
+        self.assertEqual(upscale_preview["title"], "H3 Upscale Result")
+
+        # Timeline owns the mode bundle's duration again; the planner's clip
+        # duration only feeds the muted generation engine.
+        self.assertEqual(self.links[2651][1], 1221)
+
+    def test_upscale_result_has_no_implicit_planner_dependency(self):
+        setters = {
+            str(node.get("widgets_values", [None])[0]): node["id"]
+            for node in self.workflow["nodes"] if node["type"] == "SetNode"
+        }
+        seen = set()
+        pending = [1474]  # Set_upscale_result
+        while pending:
+            node_id = pending.pop()
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            node = self.nodes[node_id]
+            for input_ in node.get("inputs", []):
+                link_id = input_.get("link")
+                if link_id in self.links:
+                    pending.append(self.links[link_id][1])
+            if node["type"] == "GetNode":
+                key = str(node.get("widgets_values", [None])[0])
+                if key in setters:
+                    pending.append(setters[key])
+
+        planner = next(node["id"] for node in self.workflow["nodes"]
+                       if node["type"] == "H3BatchPlan")
+        commit = next(node["id"] for node in self.workflow["nodes"]
+                      if node["type"] == "H3BatchCommit")
+        self.assertNotIn(planner, seen)
+        self.assertNotIn(commit, seen)
 
     def test_batch_plan_has_its_own_full_height_group_and_ref_table_is_clear(self):
         planner = next(node for node in self.workflow["nodes"]

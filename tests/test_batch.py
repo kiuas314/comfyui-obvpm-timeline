@@ -326,6 +326,11 @@ class BatchTests(unittest.TestCase):
         self.assertTrue(config["multiline"])
         self.assertFalse(config["dynamicPrompts"])
 
+    def test_batch_settings_normalise_folder_and_keep_upscale_seed(self):
+        settings = self.batch.H3BatchSettings()
+        self.assertEqual(settings.settings(r"castle\dance", 42),
+                         ("castle/dance", 42))
+
     def test_empty_pasted_yaml_is_refused(self):
         with self.assertRaisesRegex(ValueError, "manifest_yaml is empty"):
             self.batch.H3BatchPlan().plan("", "empty-v1", "movie", 0)

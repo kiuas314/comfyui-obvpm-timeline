@@ -22,6 +22,7 @@ DEFAULT_BASE_FOLDER = EXAMPLE["DEFAULT_BASE_FOLDER"]
 PLAN_ID = 1631
 COMMIT_ID = 1632
 NOTE_ID = 1633
+SETTINGS_ID = 1634
 
 
 def node_by_id(workflow, node_id):
@@ -86,8 +87,8 @@ def plan_node():
     return {
         "id": PLAN_ID,
         "type": "H3BatchPlan",
-        "pos": [-2650, 4610],
-        "size": [1310, 2250],
+        "pos": [-2650, 4710],
+        "size": [1310, 2150],
         "flags": {},
         "order": 22,
         "mode": 0,
@@ -137,7 +138,7 @@ def commit_node():
     return {
         "id": COMMIT_ID,
         "type": "H3BatchCommit",
-        "pos": [3160, 4900],
+        "pos": [2760, 5070],
         "size": [360, 210],
         "flags": {},
         "order": 86,
@@ -153,6 +154,39 @@ def commit_node():
             "crf": 19,
             "add_to_timeline": True,
         },
+        "color": "#243342",
+        "bgcolor": "#354b60",
+    }
+
+
+def settings_node():
+    return {
+        "id": SETTINGS_ID,
+        "type": "H3BatchSettings",
+        "pos": [-2650, 4610],
+        "size": [1310, 100],
+        "flags": {},
+        "order": 21,
+        "mode": 0,
+        "inputs": [
+            {"localized_name": "base_folder", "name": "base_folder",
+             "type": "STRING", "widget": {"name": "base_folder"},
+             "link": None},
+            {"localized_name": "upscale_seed", "name": "upscale_seed",
+             "type": "INT", "widget": {"name": "upscale_seed"},
+             "link": None},
+        ],
+        "outputs": [
+            {"localized_name": "base_folder", "name": "base_folder",
+             "type": "STRING", "links": None},
+            {"localized_name": "upscale_seed", "name": "upscale_seed",
+             "type": "INT", "links": None},
+        ],
+        "title": "Shared Batch + Upscale Settings",
+        "properties": {"Node name for S&R": "H3BatchSettings"},
+        "widgets_values": [DEFAULT_BASE_FOLDER, 0],
+        "widgets_values_named": {
+            "base_folder": DEFAULT_BASE_FOLDER, "upscale_seed": 0},
         "color": "#243342",
         "bgcolor": "#354b60",
     }
@@ -181,7 +215,7 @@ def note_node():
             "1. Run the demo as-is, or replace all of `manifest_yaml` on "
             "**H3 YAML Batch Plan** with your screenplay.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"
-            "3. Set the shared output `base_folder`.\n"
+            "3. Set **Shared Batch + Upscale Settings** once.\n"
             "4. Set aspect ratio and megapixels in **Batch Prompt + "
             "Resolution**. Leave Timeline upscaling off.\n"
             "5. Click **queue remaining** on the plan node.\n\n"
@@ -189,7 +223,9 @@ def note_node():
             "are saved, then added to Timeline through the same lineage-aware "
             "operation as its manual add button. The final cut exports "
             "automatically when enabled on "
-            "**H3 Batch Commit + Final Export**."
+            "**H3 Batch Commit + Final Export**. After generation completes, "
+            "turn Timeline upscaling on and use the normal Queue/Run button "
+            "once; the completed planner is not part of that pass."
         ],
         "widgets_values_named": {},
     }
@@ -197,38 +233,49 @@ def note_node():
 
 def build():
     workflow = json.loads(SOURCE.read_text(encoding="utf-8"))
-    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID}
+    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID}
            for node in workflow["nodes"]):
         raise RuntimeError("Batch node ids already exist in the source")
 
     # The planner replaces only the per-clip inputs. Resolution still uses the
     # original compact input component, and Timeline still supplies the mode
     # switch used to keep the upscale engine muted.
-    replace_link_origin(workflow, 2696, PLAN_ID, 2, "INT")
-    replace_link_origin(workflow, 2651, PLAN_ID, 3, "INT")
+    replace_link_origin(workflow, 2730, PLAN_ID, 2, "INT")
+    # Length goes straight to the generator. Keeping it in Timeline's shared
+    # mode bundle would make the already-complete planner execute again during
+    # the later upscale-only pass.
+    replace_link_origin(workflow, 3036, PLAN_ID, 3, "INT")
     replace_link_origin(workflow, 2722, PLAN_ID, 4, "OBVPM_H3_PINSPECS")
+    # The original combined UI component also emits base_folder, but its
+    # prompt input now comes from the planner. Drive both folder consumers
+    # directly so an upscale-only prompt never has to evaluate that component.
+    replace_link_origin(workflow, 2562, SETTINGS_ID, 0, "STRING")
+    replace_link_origin(workflow, 2698, SETTINGS_ID, 0, "STRING")
+    replace_link_origin(workflow, 2696, SETTINGS_ID, 1, "INT")
 
     workflow["nodes"] = [node for node in workflow["nodes"] if node["id"] != 765]
-    workflow["nodes"].extend([plan_node(), commit_node(), note_node()])
+    workflow["nodes"].extend(
+        [settings_node(), plan_node(), commit_node(), note_node()])
 
     # Reused link ids were redirected before the new planner existed, so add
     # those three output-side references now. Newly created links are handled
     # by add_link below.
     planner = node_by_id(workflow, PLAN_ID)
-    planner["outputs"][2]["links"] = [2696]
-    planner["outputs"][3]["links"] = [2651]
+    planner["outputs"][2]["links"] = [2730]
+    planner["outputs"][3]["links"] = [3036]
     planner["outputs"][4]["links"] = [2722]
+    shared = node_by_id(workflow, SETTINGS_ID)
+    shared["outputs"][0]["links"] = [2562, 2698]
+    shared["outputs"][1]["links"] = [2696]
 
     prompt_input = node_by_id(workflow, 761)
     prompt_input["pos"] = [-1040, 5970]
     prompt_input["title"] = "Batch Prompt + Resolution"
     prompt_input["inputs"][0]["link"] = 3038
-    prompt_input["inputs"][3]["link"] = 3039
 
     timeline = node_by_id(workflow, 1221)
     timeline["title"] = "Batch Mode Control — leave upscaling off"
     timeline["outputs"][0]["links"] = []
-    timeline["outputs"][1]["links"] = []
 
     # Keep the dense resolution table out of both working groups. It remains
     # nearby for reference without competing with the large YAML editor.
@@ -239,19 +286,19 @@ def build():
     save["inputs"][6]["link"] = 3040
     save["inputs"][9]["link"] = 3041
 
-    # Batch runs generate takes only. A muted result widget must also refuse
-    # frontend events, otherwise its unreadable/stale scope can claim the
-    # generation intended for the normal result window.
+    # Both result windows stay available. Frontend routing follows the mode of
+    # their upstream Set node, so generation and upscale results cannot claim
+    # one another.
     upscale_preview = node_by_id(workflow, 1342)
-    upscale_preview["mode"] = 2
-    upscale_preview["title"] = "H3 Upscale Result [disabled in batch]"
+    upscale_preview["mode"] = 0
+    upscale_preview["title"] = "H3 Upscale Result"
 
     add_link(workflow, 3038, PLAN_ID, 0, 761, 0, "STRING")
-    add_link(workflow, 3039, PLAN_ID, 5, 761, 3, "STRING")
     add_link(workflow, 3040, PLAN_ID, 6, 1216, 6, "STRING")
     add_link(workflow, 3041, PLAN_ID, 7, 1216, 9, "STRING")
     add_link(workflow, 3042, 1216, 0, COMMIT_ID, 0, "STRING")
     add_link(workflow, 3043, PLAN_ID, 8, COMMIT_ID, 1, "STRING")
+    add_link(workflow, 3044, SETTINGS_ID, 0, PLAN_ID, 2, "STRING")
 
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
@@ -263,16 +310,8 @@ def build():
         "color": "#3f789e",
         "flags": {},
     })
-    workflow["groups"].append({
-        "id": 34,
-        "title": "Batch Checkpoint + Final Export",
-        "bounding": [3130, 4770, 430, 370],
-        "color": "#3f789e",
-        "flags": {},
-    })
-
-    workflow["last_node_id"] = NOTE_ID
-    workflow["last_link_id"] = 3043
+    workflow["last_node_id"] = SETTINGS_ID
+    workflow["last_link_id"] = 3044
     workflow["id"] = "f5ebfa5b-a853-4f6e-bb64-a02b9517d53c"
     workflow["extra"]["ds"] = {
         "scale": 0.53,

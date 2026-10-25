@@ -10030,6 +10030,35 @@ function rpAccepts(node, d) {
     return rpVerdict(node, d) !== "no";
 }
 
+// Result previews live outside the two dynamically-muted engine groups. Follow
+// their Get -> Set bridge so the preview for the inactive branch cannot claim
+// the active branch's result. This preserves both windows for the normal
+// generate-then-upscale workflow instead of permanently muting either one.
+function rpPreviewActive(node) {
+    if (node.mode === 2) return false;
+    let source = null;
+    try {
+        source = node.getInputNode?.(0) ?? null;
+        if (source?.type === "GetNode") {
+            const key = String(source.widgets?.[0]?.value ?? "");
+            source = (source.graph?._nodes ?? []).find(
+                (candidate) => candidate.type === "SetNode"
+                    && String(candidate.widgets?.[0]?.value ?? "") === key)
+                ?? null;
+        }
+        // The Set bridge is intentionally outside the dynamically-muted
+        // engine group. Its input is the branch save node, whose mode is the
+        // authoritative signal. Walk a few transparent hops defensively.
+        for (let hop = 0; source && hop < 4; hop++) {
+            if (source.mode === 2) return false;
+            source = source.getInputNode?.(0) ?? null;
+        }
+    } catch (error) {
+        source = null;
+    }
+    return true;
+}
+
 // Deliver to the previews that positively match; only if NOBODY does may
 // the undecidable ones have it. That is what stops a preview whose scope
 // is unreadable from displaying a clip that demonstrably belongs to
@@ -11335,6 +11364,7 @@ function buildResultPreview(node) {
 
     // true when this session holds a result for this preview
     function adoptCachedResult() {
+        if (!rpPreviewActive(node)) return false;
         if (rpScopeFolder(node) === null) return false; // can't tell whose
         // newest first, matched by the same rule that gates live events
         for (let i = RP_RESULTS.length - 1; i >= 0; i--) {
@@ -11350,6 +11380,7 @@ function buildResultPreview(node) {
     // judged it (nodes_result.latest_result). Nothing is stored, so
     // opening the workflow again asks again.
     async function adoptLatestResult() {
+        if (!rpPreviewActive(node)) return;
         const scope = rpScopeFolder(node);
         if (!scope) return;
         let d = null;
@@ -11399,8 +11430,8 @@ function buildResultPreview(node) {
     const live = {
         alive: () => !!node.graph,
         describe: () => `#${node.id} watches ${rpScopeFolder(node) ?? "(any)"}`,
-        accepts: (d) => node.mode !== 2 && rpAccepts(node, d),
-        verdict: (d) => node.mode === 2 ? "no" : rpVerdict(node, d),
+        accepts: (d) => rpPreviewActive(node) && rpAccepts(node, d),
+        verdict: (d) => rpPreviewActive(node) ? rpVerdict(node, d) : "no",
         show: (d) => node._h3ShowResult(d),
         node,
     };
