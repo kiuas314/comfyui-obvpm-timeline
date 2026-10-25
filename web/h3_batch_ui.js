@@ -97,7 +97,10 @@ function installStyle() {
       .h3be-tabs{display:flex;gap:5px;padding:8px;border-bottom:1px solid #343b46}.h3be-tabs button.on{background:#2d6072;border-color:#55a6c4}
       .h3be-pane{min-height:0;flex:1;overflow:auto;padding:12px}.h3be-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}
       .h3be-field{border:1px solid #363e49;border-radius:6px;padding:8px;background:#252a32}.h3be-field.wide{grid-column:1/-1}
-      .h3be-field label{display:flex;gap:7px;align-items:center;font-weight:650;margin-bottom:5px}.h3be-field p{margin:0 0 6px;color:#8f99a6;font-size:11px}
+      .h3be-field label,.h3be-fieldhead{display:flex;gap:7px;align-items:center;font-weight:650;margin-bottom:5px}.h3be-field p{margin:0 0 6px;color:#8f99a6;font-size:11px}
+      .h3be-fieldhead button{margin-left:auto;padding:1px 7px;border:0;background:transparent;color:#aab3bf;font-size:16px;line-height:1.2}
+      .h3be-fieldhead button:hover{background:#3a2528;color:#ffb0aa}.h3be-addfield{grid-column:1/-1;display:flex;gap:7px;align-items:center;padding:4px 0 1px}
+      .h3be-addfield select{flex:1}.h3be-addfield button{white-space:nowrap}.h3be-addfield .h3be-note{margin-left:4px}
       .h3be input[type=text],.h3be input[type=number],.h3be select,.h3be textarea{width:100%;background:#15181d;color:#f0f2f4;border:1px solid #414a57;border-radius:4px;padding:6px}
       .h3be textarea{resize:vertical;min-height:74px;font:12px/1.4 ui-monospace,SFMono-Regular,monospace}.h3be textarea.long{min-height:125px}
       .h3be h3{margin:0 0 9px;font-size:16px}.h3be h4{margin:14px 0 7px;color:#9fdcf2}.h3be-note{color:#9ca7b4;font-size:12px}
@@ -259,11 +262,13 @@ function buildEditor(node) {
     function fieldControl(clip, key, label, kind, help) {
         const wide = kind === "json" || kind === "long";
         const wrap = el("div", "h3be-field" + (wide ? " wide" : ""));
-        const heading = el("label");
-        const enabled = el("input");
-        enabled.type = "checkbox";
-        enabled.checked = Object.prototype.hasOwnProperty.call(clip, key);
-        heading.append(enabled, document.createTextNode(label));
+        const heading = el("div", "h3be-fieldhead");
+        heading.append(document.createTextNode(label),
+            button("×", `Remove ${label} override and use its default`, () => {
+                delete clip[key];
+                renderClipPane();
+                scheduleSerialize();
+            }, "danger"));
         wrap.append(heading, el("p", "", help));
         let control;
         const value = clip[key];
@@ -278,18 +283,7 @@ function buildEditor(node) {
             if (kind === "number") control.step = "any";
             control.value = value ?? "";
         }
-        control.disabled = !enabled.checked;
-        enabled.addEventListener("change", () => {
-            if (enabled.checked) {
-                if (kind === "number") clip[key] = 0;
-                else if (kind === "json") clip[key] = ["cast", "shots", "dialogue", "content_loras"].includes(key) ? [] : {};
-                else clip[key] = "";
-            } else delete clip[key];
-            renderClipPane();
-            scheduleSerialize();
-        });
         control.addEventListener("input", () => {
-            if (!enabled.checked) return;
             if (kind === "number") clip[key] = Number(control.value);
             else if (kind === "json") clip[key] = parseFlexible(control.value);
             else clip[key] = control.value;
@@ -297,6 +291,75 @@ function buildEditor(node) {
             scheduleSerialize();
         });
         wrap.append(control);
+        return wrap;
+    }
+
+    function cloneValue(value) {
+        return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    }
+
+    function initialFieldValue(clip, key, kind) {
+        const inherited = documentModel.defaults?.[key];
+        if (inherited !== undefined) return cloneValue(inherited);
+        const builtins = {
+            context: selectedIndex ? "previous" : "none",
+            duration_seconds: 8,
+            seed: 0,
+            filename_prefix: clip.id || `clip_${selectedIndex + 1}`,
+            negative_prompt: documentModel.project?.negative_prompt ?? "",
+            raw_prompt: "Describe this clip using a complete H3 prompt.",
+            prompt: "Describe this clip.",
+            cast: [],
+            location: Object.keys(documentModel.locations ?? {})[0] ?? {},
+            music: "default",
+            soundscape: "",
+            camera: {},
+            continuity: documentModel.project?.continuity ?? "",
+            shot: { action: "Describe the action in this clip." },
+            shots: [{ action: "Describe the action in this clip." }],
+            dialogue: [],
+            character_overrides: {},
+            window: "39",
+            mode: "masked",
+            metadata: {},
+            content_loras: [],
+        };
+        if (Object.prototype.hasOwnProperty.call(builtins, key)) {
+            return cloneValue(builtins[key]);
+        }
+        if (kind === "number") return 0;
+        if (kind === "json") return {};
+        return "";
+    }
+
+    function addFieldControl(clip) {
+        const missing = CLIP_FIELDS.filter(([key]) =>
+            !Object.prototype.hasOwnProperty.call(clip, key));
+        if (!missing.length) return null;
+        const wrap = el("div", "h3be-addfield");
+        const select = el("select");
+        const placeholder = el("option", "", "Add optional field…");
+        placeholder.value = "";
+        select.append(placeholder);
+        for (const [key, label] of missing) {
+            const option = el("option", "", label);
+            option.value = key;
+            select.append(option);
+        }
+        const add = button("add field", "Add a clip-level override", () => {
+            const definition = CLIP_FIELDS.find(([key]) => key === select.value);
+            if (!definition) return;
+            const [key, , kind] = definition;
+            if (key === "shot") delete clip.shots;
+            if (key === "shots") delete clip.shot;
+            clip[key] = initialFieldValue(clip, key, kind);
+            renderClipPane();
+            scheduleSerialize();
+        });
+        add.disabled = true;
+        select.addEventListener("change", () => { add.disabled = !select.value; });
+        wrap.append(select, add, el("span", "h3be-note",
+            "Absent fields inherit story defaults."));
         return wrap;
     }
 
@@ -392,7 +455,13 @@ function buildEditor(node) {
         idWrap.append(id);
         const fields = el("div", "h3be-fields");
         fields.append(idWrap);
-        for (const definition of CLIP_FIELDS) fields.append(fieldControl(clip, ...definition));
+        for (const definition of CLIP_FIELDS) {
+            if (Object.prototype.hasOwnProperty.call(clip, definition[0])) {
+                fields.append(fieldControl(clip, ...definition));
+            }
+        }
+        const addField = addFieldControl(clip);
+        if (addField) fields.append(addField);
         const actions = el("div", "h3be-actions");
         actions.append(
             button("generate this clip", "Queue only the selected clip", () => generate("clip"), "primary"),
