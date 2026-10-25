@@ -192,14 +192,22 @@ same Python installation that runs ComfyUI.
 
 ## Workflow
 
-The workflow is available in the [workflows](https://github.com/chanon/comfyui-obvpm-timeline/tree/main/workflows) folder. Use the latest, `h3_obvpm_timeline_r2v_v0.1.4-007A.json` (it needs comfyui-obvpm 0.2.16 and this pack's 0.1.4, see [the workflow changelog](workflows/README.md)); the older `-007`, `-006` and `-004` are kept for setups that cannot update yet.
+The workflows are available in the [workflows](workflows) folder. Use
+`h3_obvpm_timeline_r2v_v0.1.4-007A.json` for supervised Timeline work, or the
+ready-wired
+[`h3_obvpm_timeline_r2v_v0.1.4-007A-batch.json`](workflows/h3_obvpm_timeline_r2v_v0.1.4-007A-batch.json)
+for unattended YAML batches. Both keep the same model, reference, sampler,
+upscale and preview setup (and need comfyui-obvpm 0.2.16); see the
+[workflow changelog](workflows/README.md). Older workflows are kept for setups
+that cannot update yet.
 
 ### Unattended YAML batches
 
 `H3 Batch Plan` and `H3 Batch Commit` add an unattended layer without
 changing the supervised Timeline workflow. Start from
 [`examples/h3_batch.yaml`](examples/h3_batch.yaml), place the manifest in
-ComfyUI's input folder (or use an absolute path), and wire:
+ComfyUI's input folder (or use an absolute path), then load the ready-wired
+`007A-batch` workflow. In a custom workflow, wire:
 
 ```
 Batch Plan prompt/negative_prompt -> the two text encoders
