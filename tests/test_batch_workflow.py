@@ -67,6 +67,24 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn("MinimaxH3LatentUpscaler3D", types)
         self.assertIn("H3Timeline", types)
 
+    def test_batch_plan_has_its_own_full_height_group_and_ref_table_is_clear(self):
+        planner = next(node for node in self.workflow["nodes"]
+                       if node["type"] == "H3BatchPlan")
+        groups = {group["title"]: group
+                  for group in self.workflow["groups"]}
+        plan_group = groups["H3 YAML Batch Plan"]["bounding"]
+        ui_group = groups["OBVPM H3 YAML Batch UI [restore]"]["bounding"]
+        self.assertEqual(plan_group[1], ui_group[1])
+        self.assertEqual(plan_group[3], ui_group[3])
+        self.assertLess(plan_group[0] + plan_group[2], ui_group[0])
+        self.assertGreaterEqual(planner["pos"][0], plan_group[0])
+        self.assertIn("reference_image: 1", planner["widgets_values"][0])
+        self.assertIn("reference_image: 2", planner["widgets_values"][0])
+
+        resolution = self.nodes[118]
+        self.assertGreaterEqual(resolution["pos"][1],
+                                ui_group[1] + ui_group[3])
+
 
 if __name__ == "__main__":
     unittest.main()

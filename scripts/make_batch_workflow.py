@@ -86,8 +86,8 @@ def plan_node():
     return {
         "id": PLAN_ID,
         "type": "H3BatchPlan",
-        "pos": [-1040, 5180],
-        "size": [470, 760],
+        "pos": [-2650, 4610],
+        "size": [1310, 2250],
         "flags": {},
         "order": 22,
         "mode": 0,
@@ -224,6 +224,11 @@ def build():
     timeline["outputs"][0]["links"] = []
     timeline["outputs"][1]["links"] = []
 
+    # Keep the dense resolution table out of both working groups. It remains
+    # nearby for reference without competing with the large YAML editor.
+    resolution_reference = node_by_id(workflow, 118)
+    resolution_reference["pos"] = [-1560, 6950]
+
     save = node_by_id(workflow, 1216)
     save["inputs"][6]["link"] = 3040
     save["inputs"][9]["link"] = 3041
@@ -238,6 +243,13 @@ def build():
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
     ui_group["bounding"][3] = 2330
+    workflow["groups"].append({
+        "id": 35,
+        "title": "H3 YAML Batch Plan",
+        "bounding": [-2690, 4570, 1390, 2330],
+        "color": "#3f789e",
+        "flags": {},
+    })
     workflow["groups"].append({
         "id": 34,
         "title": "Batch Checkpoint + Final Export",
