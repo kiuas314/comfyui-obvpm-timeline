@@ -15,10 +15,19 @@ file is required. Export writes the current visual-editor document back to a
 portable YAML file.
 
 The clip list is divided into segments at every `context: none` root. Select a
-clip to edit its blocks, enable or disable optional values, and inspect the
-exact compiled H3 prompt. Generation can queue only that clip, its complete
-root segment, or every unfinished clip in the movie. Completed takes are added
-to Timeline automatically for whole-story review and the later upscale pass.
+clip to edit its blocks, add or remove optional overrides, and inspect the exact
+compiled H3 prompt. Generation can queue only that clip, its complete root
+segment, or every unfinished clip in the movie. Completed takes are added to
+Timeline automatically for whole-story review and the later upscale pass.
+
+To revise finished work without changing `batch_id`, enable **regenerate
+existing takes** and then choose the clip, segment, or whole-movie generation
+button. The selected completion records are reopened, so revised YAML is
+accepted intentionally and new takes are queued. When each replacement
+finishes, Timeline swaps it into every position occupied by the previous take
+while preserving cuts and seam settings. Previous MP4 and sidecar files remain
+on disk as recoverable takes; regeneration changes the active checkpoint and
+Timeline cut rather than deleting media.
 
 The node is prefilled with a short castle smoke test. `castle_establishing`
 uses `context: none`; `ballroom_dance` starts a second independent root; and

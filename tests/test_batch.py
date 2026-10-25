@@ -426,6 +426,59 @@ class BatchTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "manifest changed"):
             planner.plan(json.dumps(changed), "inline-v2", "inline-movie", 0)
 
+    def test_explicit_regeneration_reopens_and_replaces_completed_take(self):
+        manifest = self.manifest()
+        manifest_yaml = json.dumps(manifest)
+        planner = self.batch.H3BatchPlan()
+        commit = self.batch.H3BatchCommit()
+        old_paths = {}
+        for name in ("opening", "middle", "callback"):
+            planned = planner.plan(manifest_yaml, "regen-v1", "movie", 0)
+            old_paths[name] = "movie/%s_00001.mp4" % name
+            commit.commit(self.saved_take(old_paths[name]), planned[8],
+                          auto_export=False)
+
+        manifest["clips"][0]["prompt"] = "A revised opening"
+        changed_yaml = json.dumps(manifest)
+        reopened = self.batch.regenerate_batch(
+            changed_yaml, "regen-v1", "movie", json.dumps(["opening"]))
+        self.assertEqual(reopened["reopened"], 1)
+        self.assertEqual(reopened["replacements"], [{
+            "id": "opening", "path": old_paths["opening"],
+        }])
+
+        planned = planner.plan(
+            changed_yaml, "regen-v1", "movie", 0,
+            json.dumps(["opening"]))
+        self.assertEqual(planned[0], "A revised opening")
+        ticket = json.loads(planned[8])
+        self.assertEqual(ticket["replace_path"], old_paths["opening"])
+        new_path = "movie/opening_00002.mp4"
+        result = commit.commit(self.saved_take(new_path), planned[8],
+                               auto_export=False)
+        status = result["ui"]["batch"][0]
+        self.assertEqual(status["replace_path"], old_paths["opening"])
+        self.assertEqual(status["path"], new_path)
+        self.assertTrue(result["result"][1])
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.output, old_paths["opening"])))
+
+        found = self.batch.batch_status(
+            changed_yaml, "regen-v1", "movie", json.dumps(["opening"]))
+        self.assertEqual(found["completed"], 1)
+        state = self.batch._read_state(found["state_path"])
+        self.assertNotIn("opening", state.get("replacements", {}))
+        self.assertEqual(len(state["completed"]), 3)
+
+    def test_regeneration_refuses_an_active_take(self):
+        manifest_yaml = json.dumps(self.manifest())
+        self.batch.H3BatchPlan().plan(
+            manifest_yaml, "regen-active", "movie", 0)
+        with self.assertRaisesRegex(ValueError, "clip 'opening' is active"):
+            self.batch.regenerate_batch(
+                manifest_yaml, "regen-active", "movie",
+                json.dumps(["opening"]))
+
     def test_pasted_yaml_widget_is_multiline_and_required(self):
         inputs = self.batch.H3BatchPlan.INPUT_TYPES()
         config = inputs["required"]["manifest_yaml"][1]

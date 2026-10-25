@@ -422,6 +422,7 @@ def _new_state(batch_id, manifest_hash, manifest_source):
         "completed": [],
         "active": None,
         "final_path": "",
+        "replacements": {},
     }
 
 
@@ -484,8 +485,83 @@ def batch_status(manifest_yaml, batch_id, base_folder, run_selection="[]"):
         }
 
 
+def regenerate_batch(manifest_yaml, batch_id, base_folder,
+                     run_selection="[]"):
+    """Reopen selected takes in an existing checkpoint.
+
+    The previous paths are retained as replacement hints for Timeline. Files
+    are deliberately not deleted: regeneration changes the active cut and
+    checkpoint, but leaves the rejected take recoverable on disk.
+    """
+    manifest, digest, source = load_manifest(manifest_yaml)
+    path = _state_path(base_folder, batch_id)
+    selected = _selection_ids(manifest, run_selection)
+    selected_set = set(selected)
+    with _LOCK:
+        state = _read_state(path)
+        if state is None:
+            state = _new_state(batch_id, digest, source)
+        if state.get("version") != _STATE_VERSION:
+            raise ValueError("H3 batch: checkpoint %s has an unsupported "
+                             "version." % path)
+        if state.get("batch_id") != batch_id:
+            raise ValueError("H3 batch: checkpoint id mismatch at %s." % path)
+        if state.get("active"):
+            raise ValueError(
+                "H3 batch: cannot regenerate while clip %r is active. Wait "
+                "for it to commit or interrupt the queue first."
+                % state["active"].get("id"))
+
+        manifest_indexes = {clip["id"]: index
+                            for index, clip in enumerate(manifest["clips"])}
+        completed = list(state.get("completed", []))
+        kept = [one for one in completed
+                if str(one.get("id")) not in selected_set]
+        # Reusing a batch id with revised YAML is safe for retained takes only
+        # while their identity and position still match. A structural rewrite
+        # needs a whole-movie regeneration (or a new batch id).
+        for one in kept:
+            clip_id = str(one.get("id"))
+            if (clip_id not in manifest_indexes
+                    or int(one.get("index", -1)) != manifest_indexes[clip_id]):
+                raise ValueError(
+                    "H3 batch: the revised manifest moved or removed completed "
+                    "clip %r. Regenerate the whole movie or use a new batch_id."
+                    % clip_id)
+
+        replacements = dict(state.get("replacements") or {})
+        removed = []
+        for one in completed:
+            clip_id = str(one.get("id"))
+            if clip_id not in selected_set:
+                continue
+            old_path = str(one.get("path") or "")
+            if old_path:
+                replacements[clip_id] = old_path
+            removed.append({"id": clip_id, "path": old_path})
+
+        completed_map = {str(one["id"]): str(one["path"]) for one in kept}
+        _validate_selection_dependencies(manifest, selected, completed_map)
+        state["manifest_hash"] = digest
+        state["manifest_source"] = source
+        state["completed"] = kept
+        state["replacements"] = replacements
+        state["final_path"] = ""
+        state.pop("export_error", None)
+        _write_state(path, state)
+
+        return {
+            "total": len(selected),
+            "completed": 0,
+            "remaining": len(selected),
+            "selected": selected,
+            "reopened": len(removed),
+            "replacements": removed,
+        }
+
+
 def register():
-    """Register the small read-only status route used by the queue button."""
+    """Register the editor's batch inspection and checkpoint routes."""
     from aiohttp import web
     from server import PromptServer
 
@@ -505,6 +581,21 @@ def register():
             return web.json_response(found)
         except Exception as exc:
             _LOG.info("obvpm.h3: batch_status failed: %s", exc)
+            return web.json_response({"error": str(exc)}, status=400)
+
+    @PromptServer.instance.routes.post("/obvpm/h3/batch_regenerate")
+    async def _batch_regenerate(request):
+        import asyncio
+        try:
+            data = await request.json()
+            found = await asyncio.to_thread(
+                regenerate_batch, str(data.get("manifest_yaml", "")),
+                str(data.get("batch_id", "")),
+                str(data.get("base_folder", "")),
+                data.get("run_selection", "[]"))
+            return web.json_response(found)
+        except Exception as exc:
+            _LOG.info("obvpm.h3: batch regeneration failed: %s", exc)
             return web.json_response({"error": str(exc)}, status=400)
 
     @PromptServer.instance.routes.post("/obvpm/h3/batch_inspect")
@@ -678,6 +769,9 @@ class H3BatchPlan:
                 state["active"] = {"id": clip["id"], "index": index}
                 _write_state(state_path, state)
 
+            replace_path = str(
+                (state.get("replacements") or {}).get(clip["id"]) or "")
+
         context_id = clip["context"]
         if context_id == "previous":
             context_id = manifest["clips"][index - 1]["id"] if index else "none"
@@ -721,6 +815,7 @@ class H3BatchPlan:
             "metadata": metadata,
             "context_id": context_id,
             "context_path": context_path,
+            "replace_path": replace_path,
         }, separators=(",", ":"), ensure_ascii=False)
         _LOG.info("obvpm.h3: batch %s clip %d/%d %s (%s)", batch_id,
                   index + 1, len(manifest["clips"]), clip["id"],
@@ -786,6 +881,7 @@ class H3BatchCommit:
                              % absolute)
 
         state_path = _state_path(item.get("base_folder"), item.get("batch_id"))
+        previous_path = str(item.get("replace_path") or "")
         with _LOCK:
             state = _validated_state(state_path, item["batch_id"], digest,
                                      source)
@@ -798,12 +894,17 @@ class H3BatchCommit:
                     raise RuntimeError("H3 batch: commit does not match the "
                                        "active checkpoint item.")
             else:
+                previous_path = str(
+                    (state.get("replacements") or {}).get(item["clip_id"])
+                    or item.get("replace_path") or "")
                 state.setdefault("completed", []).append({
                     "id": item["clip_id"],
                     "index": int(item["index"]),
                     "path": rel,
                     "metadata": item.get("metadata") or {},
                 })
+                (state.setdefault("replacements", {})).pop(
+                    item["clip_id"], None)
                 state["active"] = None
                 _write_state(state_path, state)
             completed = sorted(state.get("completed", []),
@@ -843,6 +944,7 @@ class H3BatchCommit:
         status = {
             "batch_id": item["batch_id"], "clip_id": item["clip_id"],
             "path": rel, "add_to_timeline": bool(add_to_timeline),
+            "replace_path": previous_path,
             "completed": len(completed), "total": total,
             "complete": complete, "final_path": final_path,
             "export_error": export_error,

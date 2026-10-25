@@ -2071,7 +2071,7 @@ const TL_ROLE = {
 // more pin state.
 const TL_UPSCALE_BG = "rgba(28,106,116,0.92)";
 const TL_UPSCALE_HOVER = "rgba(38,132,144,0.95)";
-// sibling-widget channel: Timeline nodes register {folder, offer,
+// sibling-widget channel: Timeline nodes register {folder, offer, replace,
 // forget} here so the Result Preview can hand them a good take or
 // report a deleted one. Frontend-only on purpose -- the graph stays
 // unwired, the Timeline stays outside execution.
@@ -2089,7 +2089,9 @@ function tlRegistryMatches(clip) {
 
 // H3 Batch Commit has already verified both the take and its context sidecar.
 // Offering it here follows the exact same lineage-aware placement path as the
-// Result Preview's "+ add to timeline" button, but needs no human click.
+// Result Preview's "+ add to timeline" button, but needs no human click. A
+// regenerated take carries its prior path so the Timeline can replace it in
+// place (including roots, which have no lineage-derived gap to aim at).
 if (!globalThis.__obvpmH3BatchTimeline) {
     globalThis.__obvpmH3BatchTimeline = true;
     api.addEventListener("executed", async ({ detail }) => {
@@ -2098,7 +2100,10 @@ if (!globalThis.__obvpmH3BatchTimeline) {
         const matches = tlRegistryMatches(status.path);
         for (const timeline of matches) {
             try {
-                await timeline.offer(status.path, {});
+                const replaced = status.replace_path
+                    ? await timeline.replace(status.replace_path, status.path)
+                    : null;
+                if (!replaced) await timeline.offer(status.path, {});
             } catch (err) {
                 console.error("[obvpm h3] batch timeline add failed:", err);
             }
@@ -9678,6 +9683,26 @@ app.registerExtension({
                         ? `${msg}, with ${n === 1 ? "its own seam settings"
                             : n + " joins' seam settings"}`
                         : msg;
+                },
+                // Regeneration is an explicit batch operation. Replace every
+                // occurrence of the old take while preserving each occurrence's
+                // cuts, part identity, and per-seam settings. A split clip may
+                // legitimately appear more than once in the sequence.
+                replace: async (oldClip, clip) => {
+                    if (!oldClip || oldClip === clip) return null;
+                    const entries = tlParseSequence(seqWidget.value);
+                    const lines = currentLines();
+                    const at = entryLines();
+                    let count = 0;
+                    entries.forEach((entry, index) => {
+                        if (entry.gap != null || entry.clip !== oldClip) return;
+                        entry.clip = clip;
+                        lines[at[index]] = tlFormatLine(entry);
+                        count += 1;
+                    });
+                    if (!count) return null;
+                    setSequence(lines.join("\n"));
+                    return `replaced ${count} Timeline ${count === 1 ? "entry" : "entries"}`;
                 },
                 forget: (clip) => {
                     allPickerClips = allPickerClips.filter(

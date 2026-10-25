@@ -87,6 +87,8 @@ function installStyle() {
         padding:6px 10px;cursor:pointer}.h3be button:hover{background:#384352}.h3be button:disabled{opacity:.5;cursor:default}
       .h3be .primary{background:#286b87;border-color:#3b91b3}.h3be .danger{color:#ffb0aa}
       .h3be-toolbar,.h3be-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+      .h3be-regenerate{display:flex;gap:6px;align-items:center;margin-left:auto;padding:5px 8px;border:1px solid #684b32;border-radius:5px;background:#30261e;color:#f0c996;font-size:12px}
+      .h3be-regenerate input{margin:0}.h3be-regenerate.on{border-color:#b8783e;background:#46301e;color:#ffd29d}
       .h3be-status{margin-left:auto;color:#a9b2bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
       .h3be-body{min-height:0;flex:1;display:grid;grid-template-columns:265px minmax(0,1fr);gap:10px}
       .h3be-sidebar,.h3be-main{min-height:0;border:1px solid #343b46;border-radius:7px;background:#20242b;overflow:hidden}
@@ -175,6 +177,7 @@ function buildEditor(node) {
     let syncTimer = null;
     let syncPromise = Promise.resolve();
     let revision = 0;
+    let regenerateMode = false;
 
     function setStatus(text, error = false) {
         status.textContent = text;
@@ -467,6 +470,18 @@ function buildEditor(node) {
             button("generate this clip", "Queue only the selected clip", () => generate("clip"), "primary"),
             button("generate this segment", "Queue this root shot and its continuations", () => generate("segment"), "primary"),
             button("generate whole movie", "Queue every unfinished clip", () => generate("movie"), "primary"));
+        const regenerate = el("label", "h3be-regenerate" + (regenerateMode ? " on" : ""));
+        const regenerateCheck = el("input");
+        regenerateCheck.type = "checkbox";
+        regenerateCheck.checked = regenerateMode;
+        regenerateCheck.addEventListener("change", () => {
+            regenerateMode = regenerateCheck.checked;
+            regenerate.classList.toggle("on", regenerateMode);
+        });
+        regenerate.append(regenerateCheck,
+            document.createTextNode("regenerate existing takes"));
+        regenerate.title = "Reopen completed clips in this batch ID and replace their Timeline entries; old files remain on disk";
+        actions.append(regenerate);
         const negative = el("div", "h3be-note");
         negative.dataset.negative = "1";
         const loras = el("div", "h3be-note");
@@ -569,21 +584,30 @@ function buildEditor(node) {
                 ids = inspection.segments.find((segment) => segment.id === clip.segment)?.clips;
             } else ids = inspection.clips.map((one) => one.id);
             setWidgetValue(node, "run_selection", JSON.stringify(ids));
-            setStatus(`checking ${scope} scope…`);
-            const found = await post("/obvpm/h3/batch_status", {
+            const regenerating = regenerateMode;
+            setStatus(`${regenerating ? "reopening" : "checking"} ${scope} scope…`);
+            const found = await post(regenerating
+                ? "/obvpm/h3/batch_regenerate"
+                : "/obvpm/h3/batch_status", {
                 manifest_yaml: widgetValue(node, "manifest_yaml"),
                 batch_id: widgetValue(node, "batch_id"),
                 base_folder: inputValue(node, "base_folder"),
                 run_selection: ids,
             });
+            if (regenerating) {
+                regenerateMode = false;
+                const check = root.querySelector(".h3be-regenerate input");
+                if (check) check.checked = false;
+                root.querySelector(".h3be-regenerate")?.classList.remove("on");
+            }
             if (!found.remaining) {
-                setStatus(`${scope} already complete (${found.completed}/${found.total}); use a new batch_id to regenerate`);
+                setStatus(`${scope} already complete (${found.completed}/${found.total}); enable “regenerate existing takes” to replace it`);
                 return;
             }
-            setStatus(`queueing ${found.remaining} ${found.remaining === 1 ? "clip" : "clips"}…`);
+            setStatus(`queueing ${found.remaining} ${regenerating ? "replacement " : ""}${found.remaining === 1 ? "clip" : "clips"}…`);
             const queued = await app.queuePrompt(0, found.remaining);
             if (queued === false) throw new Error("ComfyUI did not queue the selection");
-            setStatus(`queued ${found.remaining} · results will be added to Timeline`);
+            setStatus(`queued ${found.remaining}${regenerating ? " for regeneration" : ""} · results will be ${regenerating ? "replaced in" : "added to"} Timeline`);
         } catch (error) {
             console.error("[obvpm h3] scoped generation failed", error);
             setStatus(error.message || String(error), true);
