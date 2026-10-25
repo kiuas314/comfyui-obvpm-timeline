@@ -184,11 +184,59 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/chanon/comfyui-obvpm-timeline
 ```
 
-Restart ComfyUI. No extra Python dependencies are required. 
+Install the package dependencies (ComfyUI Manager does this automatically),
+then restart ComfyUI. PyYAML is used only by the optional batch-manifest nodes;
+the generation and timeline nodes otherwise use ComfyUI's own dependencies.
+For a manual clone, run `python -m pip install -r requirements.txt` with the
+same Python installation that runs ComfyUI.
 
 ## Workflow
 
 The workflow is available in the [workflows](https://github.com/chanon/comfyui-obvpm-timeline/tree/main/workflows) folder. Use the latest, `h3_obvpm_timeline_r2v_v0.1.4-007A.json` (it needs comfyui-obvpm 0.2.16 and this pack's 0.1.4, see [the workflow changelog](workflows/README.md)); the older `-007`, `-006` and `-004` are kept for setups that cannot update yet.
+
+### Unattended YAML batches
+
+`H3 Batch Plan` and `H3 Batch Commit` add an unattended layer without
+changing the supervised Timeline workflow. Start from
+[`examples/h3_batch.yaml`](examples/h3_batch.yaml), place the manifest in
+ComfyUI's input folder (or use an absolute path), and wire:
+
+```
+Batch Plan prompt/negative_prompt -> the two text encoders
+Batch Plan seed                 -> sampler seed
+Batch Plan length               -> empty AV latent length
+Batch Plan pin_specs            -> H3 MCtx Apply Pins
+Batch Plan base_folder/prefix   -> H3 MCtx Trim and Save Video
+Batch Plan metadata             -> that Save node's metadata
+Save path + Batch Plan ticket   -> H3 Batch Commit
+```
+
+Click **queue remaining** on H3 Batch Plan (or set ComfyUI's queue batch count
+to the number of remaining clips and Run). Each queued execution reads the
+checkpoint again, so it selects the next clip rather than repeating the first.
+The commit happens only after the MP4
+and `.mctx.safetensors` sidecar exist. Cancelling or losing a run leaves that
+clip active; running again resumes it. Keep `batch_id` to resume, or change it
+to start a new run without deleting the earlier takes.
+
+`context: none` makes a fresh root (a hard cut), `context: previous` extends
+the prior manifest clip, and `context: some_earlier_id` branches from any
+completed earlier clip. The mapping form adds per-join settings:
+
+```yaml
+context:
+  from: previous
+  window: 39
+  mode: masked
+  # cut: 158        # optional delivered-frame trim point
+```
+
+On the final successful commit, `auto_export` builds the lineage-aware cut and
+writes it under `export_filename_prefix`. The commit also returns the complete
+sequence text, so it can be sent to H3 MCtx Assemble or pasted into a Timeline.
+If an individual generation errors, already committed clips remain safe; clear
+or let the failed queue entries finish, fix the cause, and queue the remaining
+count again.
 
 ## Other Notes
 

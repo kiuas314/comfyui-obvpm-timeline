@@ -1,0 +1,49 @@
+version: 1
+
+defaults:
+  duration_seconds: 8
+  negative_prompt: >-
+    subtitles, captions, title cards, watermark, low quality
+  # Every clip after the first continues the previous clip unless it says
+  # otherwise. masked preserves the shared latent/audio context exactly.
+  context: previous
+  window: 39
+  mode: masked
+
+clips:
+  - id: establishing
+    context: none
+    seed: 41001
+    prompt: >-
+      Wide cinematic establishing shot of an old observatory above a stormy
+      sea at blue hour. The camera slowly pushes toward the open dome while
+      warm tungsten light spills through the windows. Natural motion, detailed
+      atmosphere, no cuts.
+
+  - id: enter_dome
+    prompt: >-
+      Continue the same camera move through the open dome. A lone astronomer
+      crosses frame and reaches for the brass telescope as distant lightning
+      softly illuminates the room. Preserve the character, lighting, weather,
+      and camera momentum from the previous shot.
+
+  - id: memory_insert
+    # A fresh root creates a deliberate hard cut and shares no latent context.
+    context: none
+    seed: 92017
+    prompt: >-
+      Sunlit handheld close-up of the same astronomer as a child holding a
+      handmade cardboard telescope in a summer field. Warm nostalgic colour,
+      wind moving the tall grass, intimate documentary movement.
+
+  - id: return_to_dome
+    # Continue an earlier named clip rather than the immediately previous one.
+    context:
+      from: enter_dome
+      window: 39
+      mode: masked
+    prompt: >-
+      Continue inside the stormy observatory from the exact prior motion. The
+      astronomer looks up from the telescope as a brilliant comet becomes
+      visible through the dome, reflected in their eyes. Slow push-in.
+
