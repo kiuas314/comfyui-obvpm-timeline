@@ -8,11 +8,16 @@ attach the transactional batch commit after the existing save node.
 
 import json
 from pathlib import Path
+import runpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "workflows" / "h3_obvpm_timeline_r2v_v0.1.4-007A.json"
 TARGET = ROOT / "workflows" / "h3_obvpm_timeline_r2v_v0.1.4-007A-batch.json"
+EXAMPLE = runpy.run_path(str(ROOT / "batch_example.py"))
+DEFAULT_MANIFEST_YAML = EXAMPLE["DEFAULT_MANIFEST_YAML"]
+DEFAULT_BATCH_ID = EXAMPLE["DEFAULT_BATCH_ID"]
+DEFAULT_BASE_FOLDER = EXAMPLE["DEFAULT_BASE_FOLDER"]
 
 PLAN_ID = 1631
 COMMIT_ID = 1632
@@ -90,11 +95,12 @@ def plan_node():
         "outputs": outputs,
         "title": "H3 YAML Batch Plan — queue remaining",
         "properties": {"Node name for S&R": "H3BatchPlan"},
-        "widgets_values": ["", "film-v1", "my_project", 0],
+        "widgets_values": [DEFAULT_MANIFEST_YAML, DEFAULT_BATCH_ID,
+                           DEFAULT_BASE_FOLDER, 0],
         "widgets_values_named": {
-            "manifest_yaml": "",
-            "batch_id": "film-v1",
-            "base_folder": "my_project",
+            "manifest_yaml": DEFAULT_MANIFEST_YAML,
+            "batch_id": DEFAULT_BATCH_ID,
+            "base_folder": DEFAULT_BASE_FOLDER,
             "base_seed": 0,
         },
         "color": "#243342",
@@ -163,8 +169,11 @@ def note_node():
         "properties": {"Node name for S&R": "MarkdownNote"},
         "widgets_values": [
             "## Unattended YAML batch\n\n"
-            "1. Paste the complete manifest into `manifest_yaml` on **H3 "
-            "YAML Batch Plan**.\n"
+            "A three-clip castle dance demo is already loaded. It contains "
+            "one independent establishing shot, then two ballroom clips that "
+            "share context and end with a kiss.\n\n"
+            "1. Run the demo as-is, or replace all of `manifest_yaml` on "
+            "**H3 YAML Batch Plan** with your screenplay.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"
             "3. Set the shared output `base_folder`.\n"
             "4. Set aspect ratio and megapixels in **Batch Prompt + "

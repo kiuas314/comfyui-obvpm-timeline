@@ -208,7 +208,10 @@ changing the supervised Timeline workflow. Start from
 [`examples/h3_batch.yaml`](examples/h3_batch.yaml), load the ready-wired
 `007A-batch` workflow, and paste the complete file into the plan node's
 multiline `manifest_yaml` field. The YAML is stored directly inside the ComfyUI
-workflow. In a custom workflow, wire:
+workflow. The field starts with a three-clip smoke test: an independent castle
+exterior, then two context-linked ballroom clips in which a prince and princess
+dance and end with a kiss. Replace it with your own screenplay when ready. In
+a custom workflow, wire:
 
 ```
 Batch Plan prompt/negative_prompt -> the two text encoders

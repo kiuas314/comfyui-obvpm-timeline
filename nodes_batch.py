@@ -21,6 +21,8 @@ from . import compat
 from . import mctx
 from . import wiretypes as wt
 from . import batch_prompt
+from .batch_example import (DEFAULT_BASE_FOLDER, DEFAULT_BATCH_ID,
+                            DEFAULT_MANIFEST_YAML)
 from .nodes_assemble import H3Timeline
 
 _LOG = logging.getLogger("obvpm.h3")
@@ -363,16 +365,16 @@ class H3BatchPlan:
     def INPUT_TYPES(cls):
         return {"required": {
             "manifest_yaml": ("STRING", {
-                "default": "", "multiline": True,
+                "default": DEFAULT_MANIFEST_YAML, "multiline": True,
                 "dynamicPrompts": False,
                 "tooltip": "Paste the complete YAML manifest here. It is "
                            "saved inside the ComfyUI workflow."}),
             "batch_id": ("STRING", {
-                "default": "film-v1",
+                "default": DEFAULT_BATCH_ID,
                 "tooltip": "Checkpoint identity. Change it to start a new "
                            "run; keep it unchanged to resume."}),
             "base_folder": ("STRING", {
-                "default": "project1",
+                "default": DEFAULT_BASE_FOLDER,
                 "tooltip": "Output-relative folder for clips, final export, "
                            "and the hidden batch checkpoint."}),
             "base_seed": ("INT", {

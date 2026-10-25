@@ -1,6 +1,7 @@
 """YAML batch parsing and its plan/save/commit checkpoint transaction."""
 
 import importlib
+import importlib.util
 import json
 import os
 import shutil
@@ -307,6 +308,21 @@ class BatchTests(unittest.TestCase):
     def test_empty_pasted_yaml_is_refused(self):
         with self.assertRaisesRegex(ValueError, "manifest_yaml is empty"):
             self.batch.H3BatchPlan().plan("", "empty-v1", "movie", 0)
+
+    @unittest.skipUnless(importlib.util.find_spec("yaml"), "PyYAML not installed")
+    def test_default_castle_demo_has_two_roots_and_one_continuation(self):
+        parsed = self.batch.parse_manifest(self.batch.DEFAULT_MANIFEST_YAML)
+        self.assertEqual(
+            [clip["context"] for clip in parsed["clips"]],
+            ["none", "none", "previous"])
+        self.assertEqual(
+            [clip["id"] for clip in parsed["clips"]],
+            ["castle_establishing", "ballroom_dance", "dance_to_kiss"])
+        self.assertIn("tender, unhurried kiss", parsed["clips"][2]["prompt"])
+        inputs = self.batch.H3BatchPlan.INPUT_TYPES()["required"]
+        self.assertEqual(inputs["batch_id"][1]["default"], "castle-dance-v1")
+        self.assertEqual(inputs["base_folder"][1]["default"],
+                         "castle_dance_test")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,12 @@ Paste that complete YAML directly into H3 Batch Plan's multiline
 `manifest_yaml` field. It is stored with the ComfyUI workflow, so no separate
 manifest file is required.
 
+The node is prefilled with a short castle smoke test. `castle_establishing`
+uses `context: none`; `ballroom_dance` starts a second independent root; and
+`dance_to_kiss` uses `context: previous` to inherit the dance before ending on
+a kiss. This provides both a hard-cut and a continuation test without editing
+the example first.
+
 ## Authoring model
 
 The manifest separates durable production facts from events that happen in a
