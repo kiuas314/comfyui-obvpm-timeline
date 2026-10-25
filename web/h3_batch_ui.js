@@ -642,7 +642,6 @@ function buildEditor(node) {
     toolbar.append(
         button("import YAML", "Load a YAML/JSON screenplay", () => file.click()),
         button("export YAML", "Download the current screenplay", exportYaml),
-        button("story globals", "Edit project, characters, locations, audio, and defaults", () => { tab = "globals"; renderMain(); }),
         button("raw YAML", "Advanced source editor", () => { tab = "raw"; renderMain(); }),
         status);
 
