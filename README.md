@@ -231,6 +231,8 @@ includes the following context-linked clips up to the next root. Each queued
 execution reads the checkpoint again, so it selects the next clip rather than
 repeating the first. The editor exposes every optional clip block with an
 enable switch and shows the exact compiled H3 prompt for the selected clip.
+Named content LoRAs can be inherited from manifest defaults or replaced per
+clip, including an explicit empty list for scenes that should use none.
 The commit happens only after the MP4
 and `.mctx.safetensors` sidecar exist. Cancelling or losing a run leaves that
 clip active; running again resumes it. Keep `batch_id` to resume, or change it

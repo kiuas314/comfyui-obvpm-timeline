@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const NODE = "H3BatchPlan";
-const ROOT_BLOCKS = ["project", "characters", "locations", "audio", "defaults"];
+const ROOT_BLOCKS = ["project", "characters", "locations", "audio", "lora_library", "defaults"];
 const CLIP_FIELDS = [
     ["context", "Context", "json", "'none', 'previous', an earlier clip id, or a context object"],
     ["duration_seconds", "Duration (seconds)", "number", "Optional; otherwise defaults.duration_seconds or 8"],
@@ -24,6 +24,7 @@ const CLIP_FIELDS = [
     ["window", "Context window", "text", "5, 22, 39, or 56"],
     ["mode", "Pin mode", "text", "masked, guide, or both"],
     ["metadata", "Metadata", "json", "Extra JSON object stored with the take"],
+    ["content_loras", "Scene content LoRAs", "json", "List of named presets or {name, strength, enabled} entries; [] disables defaults"],
 ];
 
 function widget(node, name) {
@@ -246,6 +247,13 @@ function buildEditor(node) {
         const negative = root.querySelector("[data-negative]");
         if (negative) negative.textContent = compiled?.negative_prompt
             ? `Negative: ${compiled.negative_prompt}` : "Negative: (empty)";
+        const loras = root.querySelector("[data-loras]");
+        if (loras) {
+            const active = (compiled?.content_loras ?? [])
+                .filter((spec) => spec.enabled && spec.strength !== 0)
+                .map((spec) => `${spec.name} @ ${spec.strength}`);
+            loras.textContent = `Effective scene LoRAs: ${active.length ? active.join(" · ") : "none"}`;
+        }
     }
 
     function fieldControl(clip, key, label, kind, help) {
@@ -274,7 +282,7 @@ function buildEditor(node) {
         enabled.addEventListener("change", () => {
             if (enabled.checked) {
                 if (kind === "number") clip[key] = 0;
-                else if (kind === "json") clip[key] = ["cast", "shots", "dialogue"].includes(key) ? [] : {};
+                else if (kind === "json") clip[key] = ["cast", "shots", "dialogue", "content_loras"].includes(key) ? [] : {};
                 else clip[key] = "";
             } else delete clip[key];
             renderClipPane();
@@ -392,8 +400,10 @@ function buildEditor(node) {
             button("generate whole movie", "Queue every unfinished clip", () => generate("movie"), "primary"));
         const negative = el("div", "h3be-note");
         negative.dataset.negative = "1";
+        const loras = el("div", "h3be-note");
+        loras.dataset.loras = "1";
         const prompt = el("pre", "h3be-prompt");
-        pane.append(titleRow, actions, fields, el("h4", "", "Compiled H3 prompt"), negative, prompt);
+        pane.append(titleRow, actions, fields, el("h4", "", "Compiled H3 prompt"), loras, negative, prompt);
         refreshPrompt();
     }
 

@@ -69,6 +69,9 @@ class BatchTests(unittest.TestCase):
         self.batch = _load_module(self.input, self.output)
 
     def tearDown(self):
+        sys.modules.pop("comfy.sd", None)
+        sys.modules.pop("comfy.utils", None)
+        sys.modules.pop("comfy", None)
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     @staticmethod
@@ -195,6 +198,67 @@ class BatchTests(unittest.TestCase):
         self.assertIn("Preserve the inherited camera motion and subject action",
                       second)
 
+    def test_scene_content_loras_inherit_override_and_disable(self):
+        data = self.structured_manifest()
+        data["lora_library"] = {
+            "cinematic": {
+                "name": "h3/cinematic.safetensors", "strength": 0.65,
+            },
+            "weather": "h3/rain.safetensors",
+        }
+        data["defaults"]["content_loras"] = ["cinematic"]
+        data["clips"][0]["content_loras"] = [
+            {"preset": "cinematic", "strength": 0.9},
+            {"preset": "weather", "enabled": False},
+        ]
+        data["clips"][1]["content_loras"] = []
+        got = self.batch.parse_manifest(json.dumps(data))
+        self.assertEqual(got["clips"][0]["content_loras"], [
+            {"name": "h3/cinematic.safetensors", "strength": 0.9,
+             "enabled": True},
+            {"name": "h3/rain.safetensors", "strength": 1.0,
+             "enabled": False},
+        ])
+        self.assertEqual(got["clips"][1]["content_loras"], [])
+
+    def test_scene_content_lora_unknown_preset_is_refused(self):
+        data = self.structured_manifest()
+        data["clips"][0]["content_loras"] = [{"preset": "missing"}]
+        with self.assertRaisesRegex(ValueError, "unknown LoRA preset"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_scene_content_lora_node_applies_enabled_entries_in_order(self):
+        folder_paths = sys.modules["folder_paths"]
+        folder_paths.get_full_path_or_raise = (
+            lambda kind, name: "/models/%s/%s" % (kind, name))
+        comfy = types.ModuleType("comfy")
+        comfy.__path__ = []
+        utils = types.ModuleType("comfy.utils")
+        utils.load_torch_file = (
+            lambda path, safe_load=True: {"path": path})
+        sd = types.ModuleType("comfy.sd")
+        sd.load_lora_for_models = (
+            lambda model, clip, weights, strength_model, strength_clip:
+            (model + [(weights["path"], strength_model)], clip))
+        comfy.utils, comfy.sd = utils, sd
+        sys.modules["comfy"] = comfy
+        sys.modules["comfy.utils"] = utils
+        sys.modules["comfy.sd"] = sd
+
+        specs = [
+            {"name": "h3/first.safetensors", "strength": 0.5,
+             "enabled": True},
+            {"name": "h3/off.safetensors", "strength": 1.0,
+             "enabled": False},
+            {"name": "h3/second.safetensors", "strength": -0.25,
+             "enabled": True},
+        ]
+        model, = self.batch.H3BatchLoraApply().apply([], json.dumps(specs))
+        self.assertEqual(model, [
+            ("/models/loras/h3/first.safetensors", 0.5),
+            ("/models/loras/h3/second.safetensors", -0.25),
+        ])
+
     def test_structured_multishot_timestamps_are_validated(self):
         data = self.structured_manifest()
         data["clips"][0].pop("shot")
@@ -277,6 +341,7 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(first[8], again[8])  # ticket
         self.assertEqual(first[2], 100)
         self.assertEqual(first[4], [])
+        self.assertEqual(first[11], "[]")
 
         first_path = self.saved_take("movie/opening_00001.mp4")
         result = self.batch.H3BatchCommit().commit(

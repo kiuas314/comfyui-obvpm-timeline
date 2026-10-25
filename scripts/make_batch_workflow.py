@@ -23,6 +23,7 @@ PLAN_ID = 1631
 COMMIT_ID = 1632
 NOTE_ID = 1633
 SETTINGS_ID = 1634
+LORA_ID = 1635
 
 
 def node_by_id(workflow, node_id):
@@ -64,6 +65,7 @@ def plan_node():
         ("ticket", "STRING"),
         ("index", "INT"),
         ("total", "INT"),
+        ("content_loras", "STRING"),
     ]
     inputs = []
     for name, input_type in (
@@ -194,6 +196,32 @@ def settings_node():
     }
 
 
+def lora_node():
+    return {
+        "id": LORA_ID,
+        "type": "H3BatchLoraApply",
+        "pos": [2160, 5140],
+        "size": [360, 100],
+        "flags": {},
+        "order": 78,
+        "mode": 0,
+        "inputs": [
+            {"localized_name": "model", "name": "model", "type": "MODEL",
+             "link": 3045},
+            {"localized_name": "content_loras", "name": "content_loras",
+             "type": "STRING", "link": 3046},
+        ],
+        "outputs": [{
+            "localized_name": "model", "name": "model", "type": "MODEL",
+            "links": None,
+        }],
+        "title": "Scene Content LoRAs (after global stack)",
+        "properties": {"Node name for S&R": "H3BatchLoraApply"},
+        "color": "#243342",
+        "bgcolor": "#354b60",
+    }
+
+
 def note_node():
     return {
         "id": NOTE_ID,
@@ -224,7 +252,8 @@ def note_node():
             "segment, or the whole movie.\n\n"
             "The compiled H3 prompt is shown beneath every clip for "
             "debugging. YAML remains available for import, export, and "
-            "advanced source editing.\n\n"
+            "advanced source editing. Scene content LoRAs are applied after "
+            "the existing global Power LoRA stack.\n\n"
             "Each clip is checkpointed only after its MP4 and context sidecar "
             "are saved, then added to Timeline through the same lineage-aware "
             "operation as its manual add button. The final cut exports "
@@ -239,7 +268,7 @@ def note_node():
 
 def build():
     workflow = json.loads(SOURCE.read_text(encoding="utf-8"))
-    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID}
+    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID, LORA_ID}
            for node in workflow["nodes"]):
         raise RuntimeError("Batch node ids already exist in the source")
 
@@ -258,10 +287,14 @@ def build():
     replace_link_origin(workflow, 2562, SETTINGS_ID, 0, "STRING")
     replace_link_origin(workflow, 2698, SETTINGS_ID, 0, "STRING")
     replace_link_origin(workflow, 2696, SETTINGS_ID, 1, "INT")
+    # Add scene-specific content LoRAs only to generation. The existing Power
+    # LoRA Loader remains the project-wide baseline, and Timeline upscaling
+    # continues to use the shared optimized model without a planner dependency.
+    replace_link_origin(workflow, 2727, LORA_ID, 0, "MODEL")
 
     workflow["nodes"] = [node for node in workflow["nodes"] if node["id"] != 765]
     workflow["nodes"].extend(
-        [settings_node(), plan_node(), commit_node(), note_node()])
+        [settings_node(), plan_node(), lora_node(), commit_node(), note_node()])
 
     # Reused link ids were redirected before the new planner existed, so add
     # those three output-side references now. Newly created links are handled
@@ -270,6 +303,8 @@ def build():
     planner["outputs"][2]["links"] = [2730]
     planner["outputs"][3]["links"] = [3036]
     planner["outputs"][4]["links"] = [2722]
+    planner["outputs"][11]["links"] = [3046]
+    node_by_id(workflow, LORA_ID)["outputs"][0]["links"] = [2727]
     shared = node_by_id(workflow, SETTINGS_ID)
     shared["outputs"][0]["links"] = [2562, 2698]
     shared["outputs"][1]["links"] = [2696]
@@ -305,6 +340,8 @@ def build():
     add_link(workflow, 3042, 1216, 0, COMMIT_ID, 0, "STRING")
     add_link(workflow, 3043, PLAN_ID, 8, COMMIT_ID, 1, "STRING")
     add_link(workflow, 3044, SETTINGS_ID, 0, PLAN_ID, 2, "STRING")
+    add_link(workflow, 3045, 1489, 0, LORA_ID, 0, "MODEL")
+    add_link(workflow, 3046, PLAN_ID, 11, LORA_ID, 1, "STRING")
 
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
@@ -316,8 +353,8 @@ def build():
         "color": "#3f789e",
         "flags": {},
     })
-    workflow["last_node_id"] = SETTINGS_ID
-    workflow["last_link_id"] = 3044
+    workflow["last_node_id"] = LORA_ID
+    workflow["last_link_id"] = 3046
     workflow["id"] = "f5ebfa5b-a853-4f6e-bb64-a02b9517d53c"
     workflow["extra"]["ds"] = {
         "scale": 0.53,

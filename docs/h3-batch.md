@@ -47,15 +47,59 @@ particular clip:
   `reference_image: 2` for Picture 2, and so on.
 - `locations` holds reusable visual and ambient-sound descriptions.
 - `audio` holds default or named non-diegetic music descriptions.
+- `lora_library` gives installed content LoRAs short, reusable names.
 - `defaults` holds generation/context settings and common cast, location,
-  music and camera values.
+  music, camera and optional `content_loras` values.
 - `clips` holds context routing plus shot-specific action, cast, dialogue and
-  overrides.
+  overrides, including scene-specific content LoRAs.
 
 Only characters named in a clip or shot's `cast` are written into that
 prompt. Their appearance, wardrobe and voice are repeated because every clip
 is a fresh text-conditioning run, even when its latent context continues a
 previous take.
+
+## Scene content LoRAs
+
+The workflow's existing **H3 Content LoRAs** Power Loader remains an additive
+global stack. Scene LoRAs are applied after that stack and only on the clip
+generation branch; the later whole-Timeline upscale does not wake the batch
+planner or reapply the last scene's LoRA.
+
+For fully manifest-controlled switching, leave the global Power Loader empty,
+put common LoRAs in `defaults.content_loras`, and override them per clip. An
+explicit empty list disables the defaults for that scene:
+
+```yaml
+lora_library:
+  fantasy_light:
+    name: h3/fantasy_light.safetensors
+    strength: 0.7
+  snow:
+    name: h3/snow_weather.safetensors
+    strength: 0.85
+
+defaults:
+  content_loras: [fantasy_light]
+
+clips:
+  - id: castle_exterior
+    context: none
+    content_loras:
+      - preset: fantasy_light
+        strength: 0.55
+      - snow
+    shot:
+      action: Snow crosses the moonlit castle.
+
+  - id: neutral_interior
+    context: none
+    content_loras: []  # no manifest-controlled content LoRAs
+    shot:
+      action: The undecorated room is still.
+```
+
+Each entry supports `name`, `preset`, `strength`, and `enabled`. Names are
+resolved from ComfyUI's `models/loras` directory when that clip executes.
 
 Reference-bound cast members also produce H3 subject definitions:
 

@@ -31,6 +31,61 @@ _LOCK = threading.RLock()
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 
 
+def _lora_spec(value, where, library=None):
+    library = library or {}
+    if isinstance(value, str):
+        if value in library:
+            return dict(library[value])
+        value = {"name": value}
+    spec = _as_mapping(value, where)
+    extra = sorted(set(spec) - {"preset", "name", "strength", "enabled"})
+    if extra:
+        raise ValueError("H3 batch: %s has unknown fields: %s."
+                         % (where, ", ".join(extra)))
+    preset = str(spec.get("preset") or "").strip()
+    base = {}
+    if preset:
+        if preset not in library:
+            raise ValueError("H3 batch: %s names unknown LoRA preset %r."
+                             % (where, preset))
+        base.update(library[preset])
+    base.update({key: value for key, value in spec.items()
+                 if key != "preset"})
+    name = str(base.get("name") or "").strip()
+    if not name:
+        raise ValueError("H3 batch: %s needs a LoRA name or preset." % where)
+    strength = float(base.get("strength", 1.0))
+    if not -20.0 <= strength <= 20.0:
+        raise ValueError("H3 batch: %s strength must be between -20 and 20."
+                         % where)
+    return {"name": name, "strength": strength,
+            "enabled": bool(base.get("enabled", True))}
+
+
+def _lora_library(root):
+    raw = _as_mapping(root.get("lora_library"), "lora_library")
+    library = {}
+    for key, value in raw.items():
+        preset = str(key or "").strip()
+        if not _ID_RE.match(preset):
+            raise ValueError("H3 batch: LoRA preset names must use letters, "
+                             "numbers, '.', '_' or '-'.")
+        library[preset] = _lora_spec(
+            value, "lora_library.%s" % preset, library={})
+    return library
+
+
+def _content_loras(value, library, where):
+    if value is None:
+        return []
+    if isinstance(value, (str, dict)):
+        value = [value]
+    if not isinstance(value, list):
+        raise ValueError("H3 batch: %s must be a list." % where)
+    return [_lora_spec(item, "%s[%d]" % (where, index), library)
+            for index, item in enumerate(value)]
+
+
 def _load_yaml(text, source="manifest"):
     """Parse YAML safely, with a useful install error.
 
@@ -77,10 +132,11 @@ def parse_manifest(text, source="manifest"):
                          % version)
 
     globals_ = None
+    lora_library = _lora_library(root)
     if version == 2:
         allowed_root = {
             "version", "project", "characters", "locations", "audio",
-            "defaults", "clips",
+            "defaults", "clips", "lora_library",
         }
         unknown_root = sorted(set(root) - allowed_root)
         if unknown_root:
@@ -91,6 +147,7 @@ def parse_manifest(text, source="manifest"):
     allowed_defaults = {
         "negative_prompt", "duration_seconds", "context", "window",
         "mode", "seed", "filename_prefix", "metadata",
+        "content_loras",
     }
     if version == 2:
         allowed_defaults |= batch_prompt.STRUCTURED_DEFAULT_FIELDS
@@ -167,6 +224,9 @@ def parse_manifest(text, source="manifest"):
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError("H3 batch: clip %r metadata must be a mapping."
                              % clip_id)
+        content_loras = _content_loras(
+            merged.get("content_loras"), lora_library,
+            "clip %r content_loras" % clip_id)
 
         if version == 1:
             prompt = merged.get("prompt")
@@ -194,6 +254,7 @@ def parse_manifest(text, source="manifest"):
             "seed": None if seed is None else int(seed),
             "filename_prefix": prefix,
             "metadata": dict(metadata or {}),
+            "content_loras": content_loras,
         })
     result = {"version": version, "clips": out}
     if globals_ is not None:
@@ -240,6 +301,7 @@ def inspect_manifest(yaml_text):
             "duration_seconds": clip["duration_seconds"],
             "compiled_prompt": clip["prompt"],
             "negative_prompt": clip["negative_prompt"],
+            "content_loras": clip["content_loras"],
             "segment": segment_by_clip[clip["id"]],
         })
     return {"document": document, "version": manifest["version"],
@@ -497,14 +559,60 @@ class H3BatchSettings:
         return (_folder_text(base_folder), int(upscale_seed))
 
 
+class H3BatchLoraApply:
+    CATEGORY = "obvpm/h3/batch"
+    FUNCTION = "apply"
+    RETURN_TYPES = ("MODEL",)
+    RETURN_NAMES = ("model",)
+    DESCRIPTION = (
+        "Applies the selected scene's content LoRAs to the generation model. "
+        "This sits after the workflow's global content-LoRA stack and is not "
+        "part of the Timeline upscale branch.")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "model": ("MODEL", {"forceInput": True}),
+            "content_loras": ("STRING", {"forceInput": True}),
+        }}
+
+    def apply(self, model, content_loras):
+        try:
+            specs = json.loads(str(content_loras or "[]"))
+        except (TypeError, ValueError):
+            raise ValueError("H3 batch: invalid scene content_loras payload.")
+        if not isinstance(specs, list):
+            raise ValueError("H3 batch: scene content_loras must be a list.")
+        if not specs:
+            return (model,)
+        import comfy.sd
+        import comfy.utils
+        for index, raw in enumerate(specs):
+            spec = _lora_spec(raw, "scene content_loras[%d]" % index)
+            if not spec["enabled"] or spec["strength"] == 0:
+                continue
+            try:
+                path = folder_paths.get_full_path_or_raise(
+                    "loras", spec["name"])
+            except Exception as exc:
+                raise ValueError("H3 batch: scene LoRA %r was not found: %s"
+                                 % (spec["name"], exc))
+            weights = comfy.utils.load_torch_file(path, safe_load=True)
+            model, _ = comfy.sd.load_lora_for_models(
+                model, None, weights, spec["strength"], 0)
+        return (model,)
+
+
 class H3BatchPlan:
     CATEGORY = "obvpm/h3/batch"
     FUNCTION = "plan"
     RETURN_TYPES = ("STRING", "STRING", "INT", "INT", wt.PINSPECS,
-                    "STRING", "STRING", "STRING", "STRING", "INT", "INT")
+                    "STRING", "STRING", "STRING", "STRING", "INT", "INT",
+                    "STRING")
     RETURN_NAMES = ("prompt", "negative_prompt", "seed", "length",
                     "pin_specs", "base_folder", "filename_prefix",
-                    "metadata", "ticket", "index", "total")
+                    "metadata", "ticket", "index", "total",
+                    "content_loras")
     DESCRIPTION = (
         "Visual YAML story editor and scoped planner. It reads the next "
         "unfinished clip in the selected clip, root segment, or whole movie. "
@@ -597,6 +705,7 @@ class H3BatchPlan:
             "clip_index": index,
             "prompt": clip["prompt"],
             "seed": seed,
+            "content_loras": clip["content_loras"],
         })
         if manifest["version"] == 2:
             metadata["prompt_format"] = "h3_base"
@@ -620,7 +729,9 @@ class H3BatchPlan:
                 specs, _folder_text(base_folder), clip["filename_prefix"],
                 json.dumps(metadata, separators=(",", ":"),
                            ensure_ascii=False),
-                ticket, index + 1, len(manifest["clips"]))
+                ticket, index + 1, len(manifest["clips"]),
+                json.dumps(clip["content_loras"], separators=(",", ":"),
+                           ensure_ascii=False))
 
 
 class H3BatchCommit:

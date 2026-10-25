@@ -42,6 +42,8 @@ class BatchWorkflowTests(unittest.TestCase):
                         if node["type"] == "H3BatchSettings")
         commit = next(node for node in self.workflow["nodes"]
                       if node["type"] == "H3BatchCommit")
+        scene_loras = next(node for node in self.workflow["nodes"]
+                           if node["type"] == "H3BatchLoraApply")
         save = next(node for node in self.workflow["nodes"]
                     if node["type"] == "H3TrimAndSaveVideoWithMCtx")
 
@@ -57,6 +59,7 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn(save["id"], targets["filename_prefix"])
         self.assertIn(save["id"], targets["metadata"])
         self.assertIn(commit["id"], targets["ticket"])
+        self.assertIn(scene_loras["id"], targets["content_loras"])
         self.assertEqual(self.links[commit["inputs"][0]["link"]][1],
                          save["id"])
         self.assertIn("manifest_yaml",
@@ -77,10 +80,17 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertEqual(self.links[2696][1], settings["id"])
         self.assertEqual(self.links[2730][1], planner["id"])
 
-        # Commit must be in the generation group so Timeline's normal group
-        # muter removes the complete planner/commit chain from upscale runs.
         generation = next(group for group in self.workflow["groups"]
                           if group["id"] == 27)["bounding"]
+        sx, sy = scene_loras["pos"]
+        sw, sh = scene_loras["size"]
+        self.assertGreaterEqual(sx, generation[0])
+        self.assertGreaterEqual(sy, generation[1])
+        self.assertLessEqual(sx + sw, generation[0] + generation[2])
+        self.assertLessEqual(sy + sh, generation[1] + generation[3])
+
+        # Commit must be in the generation group so Timeline's normal group
+        # muter removes the complete planner/commit chain from upscale runs.
         x, y = commit["pos"]
         width, height = commit["size"]
         self.assertGreaterEqual(x, generation[0])
