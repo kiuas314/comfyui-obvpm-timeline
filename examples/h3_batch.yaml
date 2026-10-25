@@ -85,10 +85,6 @@ defaults:
   mode: masked
   location: observatory_dome
   music: default
-  camera:
-    movement: static
-    amplitude: normal
-    speed: normal
 
 clips:
   - id: establishing
@@ -96,16 +92,10 @@ clips:
     seed: 41001
     location: observatory_exterior
     cast: []
-    shot:
-      framing: wide establishing shot
-      action: >-
-        Lightning softly illuminates the clouds behind the observatory as warm
-        light spills through the windows and rain crosses the frame.
-      camera:
-        movement: push_in
-        amplitude: small
-        speed: slow
-        target: the open dome
+    detailed_description: >-
+      A wide establishing shot slowly pushes toward the open dome. Lightning
+      softly illuminates the clouds behind the observatory as warm light spills
+      through the windows and rain crosses the frame.
 
   - id: enter_dome
     cast: [mara]
@@ -115,35 +105,19 @@ clips:
       notes: >-
         Preserve the direction of the storm light and the forward camera
         momentum from the exterior approach.
-    shot:
-      framing: medium-wide shot
-      action: >-
-        Mara enters the dome, crosses toward the telescope, and closes her
-        right hand around the brass focusing wheel.
-      camera:
-        movement: tracking
-        amplitude: small
-        speed: slow
-    dialogue:
-      - speaker: mara
-        delivery: quietly without looking away from the telescope
-        text: "You kept it pointed at the same star."
+    detailed_description: >-
+      A slowly tracking medium-wide view follows Mara into the dome as she
+      crosses toward the telescope and closes her right hand around the brass
+      focusing wheel. Without looking away from the telescope, she says
+      quietly, <d>[English] You kept it pointed at the same star.</d>
 
   - id: elias_reply
     cast: [mara, elias]
-    shot:
-      framing: medium two-shot
-      action: >-
-        Elias emerges from the shadow beside the chart table. Mara remains
-        beside the telescope and turns only her head toward him.
-      camera:
-        movement: arc
-        amplitude: small
-        speed: slow
-    dialogue:
-      - speaker: elias
-        delivery: with a tired half-smile
-        text: "I was waiting for you to come back."
+    detailed_description: >-
+      A slow, small arc holds a medium two-shot as Elias emerges from the shadow
+      beside the chart table. Mara remains beside the telescope and turns only
+      her head toward him. With a tired half-smile, Elias says,
+      <d>[English] I was waiting for you to come back.</d>
 
   - id: memory_insert
     # A fresh root makes a deliberate hard cut and shares no latent context.
@@ -157,15 +131,9 @@ clips:
           an eight-year-old girl with Mara's same hazel eyes and black hair
         wardrobe: a faded yellow summer dress
     music: memory
-    shot:
-      framing: handheld close-up
-      action: >-
-        Young Mara raises a handmade cardboard telescope and squints through
-        it while tall grass moves around her.
-      camera:
-        movement: handheld
-        amplitude: small
-        speed: slow
+    detailed_description: >-
+      In a gently handheld close-up, young Mara raises a handmade cardboard
+      telescope and squints through it while tall grass moves around her.
 
   - id: return_to_dome
     # Branch from the earlier dome take rather than from the memory insert.
@@ -178,13 +146,7 @@ clips:
     continuity:
       inherit_motion: true
       inherit_action: true
-    shot:
-      framing: close-up on Mara beside the telescope
-      action: >-
-        Mara looks up as a brilliant comet becomes visible through the open
-        dome, reflected in her eyes. Elias remains still in the background.
-      camera:
-        movement: push_in
-        amplitude: small
-        speed: slow
-        target: Mara's reflected eyes
+    detailed_description: >-
+      A close-up slowly pushes toward Mara beside the telescope. She looks up
+      as a brilliant comet becomes visible through the open dome, reflected in
+      her eyes, while Elias remains still in the background.

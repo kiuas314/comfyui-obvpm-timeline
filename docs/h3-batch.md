@@ -61,9 +61,9 @@ particular clip:
 - `audio` holds default or named non-diegetic music descriptions.
 - `lora_library` gives installed content LoRAs short, reusable names.
 - `defaults` holds generation/context settings and common cast, location,
-  music, camera and optional `content_loras` values.
-- `clips` holds context routing plus shot-specific action, cast, dialogue and
-  overrides, including scene-specific content LoRAs.
+  music and optional `content_loras` values.
+- `clips` holds context routing, cast, a complete `detailed_description`, and
+  overrides including scene-specific content LoRAs.
 
 The **Story globals** tab has a structured character library editor. Create a
 stable character ID there, then edit its display name, Ref2V picture number,
@@ -72,10 +72,9 @@ enable **Cast** and use its dropdown to add characters from that library;
 selected characters can be removed individually. A character cannot be deleted
 from the library while story defaults or clips still reference it.
 
-Only characters named in a clip or shot's `cast` are written into that
-prompt. Their appearance, wardrobe and voice are repeated because every clip
-is a fresh text-conditioning run, even when its latent context continues a
-previous take.
+Only characters named in a clip's `cast` are written into that prompt.
+Reference-bound characters use their Picture as the identity source; characters
+without a reference image retain their textual appearance definition.
 
 ## Scene content LoRAs
 
@@ -107,14 +106,12 @@ clips:
       - preset: fantasy_light
         strength: 0.55
       - snow
-    shot:
-      action: Snow crosses the moonlit castle.
+    detailed_description: Snow crosses the moonlit castle.
 
   - id: neutral_interior
     context: none
     content_loras: []  # no manifest-controlled content LoRAs
-    shot:
-      action: The undecorated room is still.
+    detailed_description: The undecorated room is still.
 ```
 
 Each entry supports `name`, `preset`, `strength`, and `enabled`. Names are
@@ -148,7 +145,7 @@ reference-image input is Picture 1, the second is Picture 2, and so on.
 Values resolve from broadest to narrowest:
 
 ```text
-project/libraries -> defaults -> clip -> shot
+project/libraries -> defaults -> clip
 ```
 
 A `character_overrides` entry changes appearance or wardrobe for one clip
@@ -170,9 +167,8 @@ context:
   cut: 158                       # optional delivered-frame trim point
 ```
 
-For a root, the compiled description says that a new scene opens. For a
-continuation, it says that the shot continues from inherited visual and audio
-context. Optional continuity controls make handoff intent explicit:
+For a continuation, `retention_analysis` records that visual and audio context
+must carry forward. Optional continuity controls make handoff intent explicit:
 
 ```yaml
 continuity:
@@ -181,47 +177,24 @@ continuity:
   notes: Preserve the direction of the key light and falling rain.
 ```
 
-## Shots, camera and dialogue
+## Detailed description
 
-A normal one-shot clip uses `shot`; a clip with internal edits uses `shots`.
-The first shot has no timestamp. Every later shot needs a strictly increasing
-`at` time inside the clip duration:
-
-```yaml
-shots:
-  - framing: medium-wide shot
-    action: Mara approaches the telescope.
-  - at: 3.5
-    framing: close-up
-    action: Her hand stops over the focusing wheel.
-    dialogue:
-      - speaker: mara
-        language: English
-        delivery: under her breath
-        text: "Not again."
-```
-
-The compiler renders the second entry as `[Shot 2] At 00:03.500, the camera
-cuts to...` and renders dialogue as `<d>[English] Not again.</d>`. A dialogue
-speaker must exist, have a stable speaker ID, and be present in that shot's
-cast.
-
-Camera fields compile into natural H3 prose:
+Each clip has one free-form `detailed_description`. Write framing, action,
+camera movement, timing, and dialogue exactly as you want H3 to receive them:
 
 ```yaml
-camera:
-  movement: push_in
-  amplitude: small
-  speed: slow
-  target: the letter in her hands
+detailed_description: >-
+  A medium-wide shot follows Mara toward the telescope. At 3.5 seconds, cut to
+  a close-up as her hand stops over the focusing wheel. Under her breath, she
+  says <d>[English] Not again.</d>
 ```
 
-Supported movements are `static`, `push_in`, `pull_out`, `zoom_in`,
-`zoom_out`, `pan_left`, `pan_right`, `truck_left`, `truck_right`, `tilt_up`,
-`tilt_down`, `pedestal_up`, `pedestal_down`, `arc`, `tracking`, `handheld`,
-`shake_slightly`, `shake_strongly`, `pov`, `roll_clockwise`, and
-`roll_counterclockwise`. Amplitude is `small`, `normal`, or `large`; speed is
-`slow`, `normal`, or `fast`.
+The compiler prepends the selected global visual style and location description,
+then uses this text without decomposing it into framing/action/camera fields.
+Locations are selected by ID from the **Story globals** location library. The
+older `shot` and `shots` schema remains import-compatible; adding **Detailed
+description** to a legacy clip in the visual editor converts its action text to
+the simpler form.
 
 ## Compiled output
 
@@ -265,6 +238,5 @@ case that should bypass compilation entirely, use:
 ```
 
 Manifest validation happens before sampling. Unknown characters or locations,
-duplicate speaker IDs, invalid camera values, dialogue from characters outside
-the cast, malformed shot times, and changes to a running manifest are refused
-before they consume generation time.
+duplicate speaker IDs, empty detailed descriptions, and changes to a running
+manifest are refused before they consume generation time.

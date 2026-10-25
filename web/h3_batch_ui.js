@@ -12,14 +12,11 @@ const CLIP_FIELDS = [
     ["raw_prompt", "Raw H3 prompt", "long", "Bypasses structured prompt compilation"],
     ["prompt", "Legacy prompt", "long", "Required only for version 1 manifests"],
     ["cast", "Cast", "cast", "Characters appearing in this clip"],
-    ["location", "Location", "json", "Location id or inline location object"],
+    ["location", "Location", "location", "Choose a location from the Story globals library"],
+    ["detailed_description", "Detailed description", "long", "Write the complete action, staging, camera, and dialogue for this clip"],
     ["music", "Music", "json", "Preset id, inline description, false, or 'none'"],
     ["soundscape", "Soundscape", "json", "Inline ambience, false, or 'none'"],
-    ["camera", "Camera", "json", "movement / amplitude / speed / target"],
     ["continuity", "Continuity", "json", "Text or inherit_motion / inherit_action / notes object"],
-    ["shot", "Single shot", "json", "framing / action / camera / dialogue"],
-    ["shots", "Multi-shot sequence", "json", "Array of timestamped shot blocks"],
-    ["dialogue", "Dialogue", "json", "Array of dialogue blocks for a single-shot clip"],
     ["character_overrides", "Character overrides", "json", "Per-clip appearance or wardrobe changes"],
     ["window", "Context window", "text", "5, 22, 39, or 56"],
     ["mode", "Pin mode", "text", "masked, guide, or both"],
@@ -147,7 +144,7 @@ function freshClip(index) {
         id: `clip_${index + 1}`,
         context: index ? "previous" : "none",
         duration_seconds: 8,
-        shot: { action: "Describe the action in this clip." },
+        detailed_description: "Describe everything visible and audible in this clip.",
     };
 }
 
@@ -323,6 +320,26 @@ function buildEditor(node) {
             select.addEventListener("change", () => { add.disabled = !select.value; });
             addRow.append(select, add);
             control.append(addRow);
+        } else if (kind === "location") {
+            control = el("select");
+            const inline = typeof value === "object" && value !== null;
+            const current = inline ? "__inline__" : String(value ?? "__none__");
+            if (inline) {
+                const option = el("option", "", "Inline location from imported YAML");
+                option.value = "__inline__";
+                option.selected = true;
+                control.append(option);
+            }
+            const none = el("option", "", "No specific location");
+            none.value = "__none__";
+            none.selected = current === "" || current === "__none__";
+            control.append(none);
+            for (const locationId of Object.keys(documentModel.locations ?? {})) {
+                const option = el("option", "", locationId);
+                option.value = locationId;
+                option.selected = locationId === current;
+                control.append(option);
+            }
         } else if (kind === "context") {
             control = el("select");
             const current = typeof value === "object" && value !== null
@@ -356,12 +373,18 @@ function buildEditor(node) {
             else if (kind === "context" && typeof value === "object" && value !== null) {
                 clip[key] = { ...value, from: control.value };
             }
+            else if (kind === "location") {
+                if (control.value !== "__inline__") {
+                    clip[key] = control.value === "__none__" ? "" : control.value;
+                }
+            }
             else clip[key] = control.value;
             control.classList.remove("h3be-jsonbad");
             scheduleSerialize();
         };
         if (kind !== "cast") {
-            control.addEventListener(kind === "context" ? "change" : "input", update);
+            control.addEventListener(["context", "location"].includes(kind)
+                ? "change" : "input", update);
         }
         wrap.append(control);
         if (kind === "context" && typeof value === "object" && value !== null) {
@@ -491,6 +514,18 @@ function buildEditor(node) {
             prompt: "Describe this clip.",
             cast: [],
             location: Object.keys(documentModel.locations ?? {})[0] ?? {},
+            detailed_description: (() => {
+                const legacy = Array.isArray(clip.shots)
+                    ? clip.shots : (clip.shot ? [clip.shot] : []);
+                if (!legacy.length) {
+                    return "Describe everything visible and audible in this clip.";
+                }
+                return legacy.map((shot, index) => {
+                    const action = String(shot?.action ?? "").trim();
+                    if (!index || shot?.at == null) return action;
+                    return `At ${shot.at} seconds, ${action}`;
+                }).filter(Boolean).join("\n\n");
+            })(),
             music: "default",
             soundscape: "",
             camera: {},
@@ -530,9 +565,14 @@ function buildEditor(node) {
             const definition = CLIP_FIELDS.find(([key]) => key === select.value);
             if (!definition) return;
             const [key, , kind] = definition;
-            if (key === "shot") delete clip.shots;
-            if (key === "shots") delete clip.shot;
-            clip[key] = initialFieldValue(clip, key, kind);
+            const initial = initialFieldValue(clip, key, kind);
+            if (key === "detailed_description") {
+                delete clip.shot;
+                delete clip.shots;
+                delete clip.dialogue;
+                delete clip.camera;
+            }
+            clip[key] = initial;
             renderClipPane();
             scheduleSerialize();
         });
@@ -668,7 +708,13 @@ function buildEditor(node) {
         const loras = el("div", "h3be-note");
         loras.dataset.loras = "1";
         const prompt = el("pre", "h3be-prompt");
-        pane.append(titleRow, actions, fields, el("h4", "", "Compiled H3 prompt"), loras, negative, prompt);
+        const promptHead = el("div", "h3be-actions");
+        promptHead.append(el("h4", "", "Compiled H3 prompt"),
+            button("refresh H3 prompt", "Save current fields and compile this prompt again", async () => {
+                try { await flush(); refreshPrompt(); }
+                catch (error) { setStatus(error.message || String(error), true); }
+            }));
+        pane.append(titleRow, actions, fields, promptHead, loras, negative, prompt);
         refreshPrompt();
     }
 

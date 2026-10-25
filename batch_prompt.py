@@ -24,6 +24,7 @@ STRUCTURED_DEFAULT_FIELDS = {"cast", "location", "music", "camera", "soundscape"
 STRUCTURED_CLIP_FIELDS = {
     "raw_prompt", "cast", "location", "music", "camera", "soundscape",
     "continuity", "shot", "shots", "dialogue", "character_overrides",
+    "detailed_description",
 }
 SHOT_FIELDS = {
     "at", "framing", "action", "camera", "cast", "dialogue", "transition",
@@ -358,99 +359,123 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
     base_camera = _camera(clip.get("camera"), base_camera,
                           "clip %r camera" % clip_id)
 
-    shots = clip.get("shots")
-    if shots is not None and clip.get("shot") is not None:
-        raise ValueError("H3 batch: clip %r cannot have both shot and shots."
-                         % clip_id)
-    if shots is None:
-        shots = [clip.get("shot")]
-    if not isinstance(shots, list) or not shots or shots[0] is None:
-        raise ValueError("H3 batch: structured clip %r needs shot or shots."
-                         % clip_id)
-    if len(shots) > 1 and clip.get("dialogue") is not None:
-        raise ValueError("H3 batch: clip %r with multiple shots must put "
-                         "dialogue inside each shot." % clip_id)
-
     paragraphs = []
     summary_actions = []
     retention = []
-    previous_time = 0.0
     defined = set()
-    for index, value in enumerate(shots):
-        where = "clip %r shots[%d]" % (clip_id, index)
-        shot = _mapping(value, where)
-        _unknown(shot, SHOT_FIELDS, where)
-        if index == 0 and shot.get("at") is not None:
-            raise ValueError("H3 batch: clip %r first shot must not have a "
-                             "timestamp." % clip_id)
-        if index:
-            if shot.get("at") is None:
-                raise ValueError("H3 batch: %s needs an at timestamp." % where)
-            previous_time, stamp = _timestamp(
-                shot["at"], duration, previous_time, where)
-            transition = _clean(shot.get("transition") or "the camera cuts to")
-            opening = "[Shot %d] At %s, %s" % (index + 1, stamp, transition)
-        else:
-            opening = "[Shot 1]"
+    if context != "none":
+        retention.append(
+            "Retain visual, motion, lighting, wardrobe, and audio "
+            "continuity from the inherited clip context.")
+    continuity = clip.get("continuity",
+                          globals_["project"].get("continuity"))
+    if isinstance(continuity, dict):
+        allowed = {"inherit_motion", "inherit_action", "notes"}
+        continuity = _mapping(continuity, "clip %r continuity" % clip_id)
+        _unknown(continuity, allowed, "clip %r continuity" % clip_id)
+        inherited = []
+        if continuity.get("inherit_motion"):
+            inherited.append("camera motion")
+        if continuity.get("inherit_action"):
+            inherited.append("subject action")
+        if inherited and context != "none":
+            retention.append("Preserve inherited %s without a reset."
+                             % " and ".join(inherited))
+        if _clean(continuity.get("notes")):
+            retention.append(_clean(continuity["notes"]))
+    elif _clean(continuity):
+        retention.append(_clean(continuity))
 
-        shot_cast = _cast(shot.get("cast", cast), characters, where + ".cast")
-        pieces = []
-        if index == 0:
-            style = globals_["project"].get("visual_style")
-            if style:
-                pieces.append(style)
-            if context != "none":
-                retention.append(
-                    "Retain visual, motion, lighting, wardrobe, and audio "
-                    "continuity from the inherited clip context.")
-            continuity = clip.get("continuity",
-                                  globals_["project"].get("continuity"))
-            if isinstance(continuity, dict):
-                allowed = {"inherit_motion", "inherit_action", "notes"}
-                continuity = _mapping(continuity, where + ".continuity")
-                _unknown(continuity, allowed, where + ".continuity")
-                notes = []
-                if continuity.get("inherit_motion"):
-                    notes.append("camera motion")
-                if continuity.get("inherit_action"):
-                    notes.append("subject action")
-                if notes and context != "none":
-                    retention.append(
-                        "Preserve inherited %s without a reset."
-                        % " and ".join(notes))
-                if _clean(continuity.get("notes")):
-                    retention.append(_clean(continuity["notes"]))
-            elif _clean(continuity):
-                retention.append(_clean(continuity))
-            if location["description"]:
-                pieces.append(location["description"])
+    detailed = clip.get("detailed_description")
+    if detailed is not None:
+        legacy_fields = [key for key in ("shot", "shots", "camera", "dialogue")
+                         if clip.get(key) is not None]
+        if legacy_fields:
+            raise ValueError("H3 batch: clip %r cannot combine "
+                             "detailed_description with %s."
+                             % (clip_id, " or ".join(legacy_fields)))
+        if not isinstance(detailed, str) or not detailed.strip():
+            raise ValueError("H3 batch: clip %r detailed_description is empty."
+                             % clip_id)
+        pieces = [globals_["project"].get("visual_style"),
+                  location["description"]]
+        for char_id in cast:
+            character = _character(char_id, globals_, overrides)
+            if not character.get("reference_image"):
+                pieces.append(_character_definition(character))
+        pieces.append(detailed.strip())
+        paragraphs.append(" ".join(one for one in pieces if one))
+        first_line = detailed.strip().splitlines()[0].strip()
+        summary_actions.append(first_line)
+        defined.update(cast)
+    else:
+        shots = clip.get("shots")
+        if shots is not None and clip.get("shot") is not None:
+            raise ValueError("H3 batch: clip %r cannot have both shot and shots."
+                             % clip_id)
+        if shots is None:
+            shots = [clip.get("shot")]
+        if not isinstance(shots, list) or not shots or shots[0] is None:
+            raise ValueError(
+                "H3 batch: structured clip %r needs detailed_description, "
+                "shot, or shots." % clip_id)
+        if len(shots) > 1 and clip.get("dialogue") is not None:
+            raise ValueError("H3 batch: clip %r with multiple shots must put "
+                             "dialogue inside each shot." % clip_id)
 
-        for char_id in shot_cast:
-            if char_id not in defined:
-                character = _character(char_id, globals_, overrides)
-                # A textual face/body description competes with Ref2V. Its
-                # Picture binding is the identity source; prose is reserved
-                # for characters that do not have a reference image.
-                if not character.get("reference_image"):
-                    pieces.append(_character_definition(character))
-                defined.add(char_id)
-        framing = _clean(shot.get("framing"))
-        action = _clean(shot.get("action"))
-        if not action:
-            raise ValueError("H3 batch: %s needs an action." % where)
-        summary_actions.append(action)
-        if framing:
-            pieces.append("A %s frames the action." % framing)
-        pieces.append(action)
-        pieces.append(_camera_sentence(
-            _camera(shot.get("camera"), base_camera, where + ".camera")))
-        dialogue = shot.get("dialogue")
-        if index == 0 and dialogue is None:
-            dialogue = clip.get("dialogue")
-        pieces.extend(_dialogue(
-            dialogue, shot_cast, globals_, overrides,
-            globals_["project"]["language"], where + ".dialogue"))
-        paragraphs.append(opening + " " + " ".join(pieces))
+        previous_time = 0.0
+        for index, value in enumerate(shots):
+            where = "clip %r shots[%d]" % (clip_id, index)
+            shot = _mapping(value, where)
+            _unknown(shot, SHOT_FIELDS, where)
+            if index == 0 and shot.get("at") is not None:
+                raise ValueError("H3 batch: clip %r first shot must not have a "
+                                 "timestamp." % clip_id)
+            if index:
+                if shot.get("at") is None:
+                    raise ValueError("H3 batch: %s needs an at timestamp." % where)
+                previous_time, stamp = _timestamp(
+                    shot["at"], duration, previous_time, where)
+                transition = _clean(
+                    shot.get("transition") or "the camera cuts to")
+                opening = "[Shot %d] At %s, %s" % (
+                    index + 1, stamp, transition)
+            else:
+                opening = "[Shot 1]"
+
+            shot_cast = _cast(
+                shot.get("cast", cast), characters, where + ".cast")
+            pieces = []
+            if index == 0:
+                style = globals_["project"].get("visual_style")
+                if style:
+                    pieces.append(style)
+                if location["description"]:
+                    pieces.append(location["description"])
+            for char_id in shot_cast:
+                if char_id not in defined:
+                    character = _character(char_id, globals_, overrides)
+                    if not character.get("reference_image"):
+                        pieces.append(_character_definition(character))
+                    defined.add(char_id)
+            framing = _clean(shot.get("framing"))
+            action = _clean(shot.get("action"))
+            if not action:
+                raise ValueError("H3 batch: %s needs an action." % where)
+            summary_actions.append(action)
+            if framing:
+                pieces.append("A %s frames the action." % framing)
+            pieces.append(action)
+            pieces.append(_camera_sentence(
+                _camera(shot.get("camera"), base_camera,
+                        where + ".camera")))
+            dialogue = shot.get("dialogue")
+            if index == 0 and dialogue is None:
+                dialogue = clip.get("dialogue")
+            pieces.extend(_dialogue(
+                dialogue, shot_cast, globals_, overrides,
+                globals_["project"]["language"], where + ".dialogue"))
+            paragraphs.append(opening + " " + " ".join(pieces))
 
     sound_parts = [globals_["audio"]["default_soundscape"],
                    location["soundscape"]]

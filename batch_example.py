@@ -81,15 +81,10 @@ clips:
     context: none
     location: castle_exterior
     cast: []
-    shot:
-      framing: extreme wide establishing shot
-      action: >-
-        Snow drifts through the moonlight as the camera approaches the glowing
-        castle, revealing tiny carriages arriving at its grand entrance.
-      camera:
-        movement: push_in
-        amplitude: small
-        speed: slow
+    detailed_description: >-
+      An extreme wide establishing view approaches the glowing castle with a
+      slow, small push-in. Snow drifts through the moonlight while tiny
+      carriages arrive at the grand entrance.
 
   # This begins a new root after the exterior, creating a deliberate hard cut.
   - id: ballroom_dance
@@ -97,17 +92,12 @@ clips:
     location: grand_ballroom
     cast: [princess, prince]
     duration_seconds: 8
-    shot:
-      framing: full-body medium-wide two-shot
-      action: >-
-        Prince Adrian offers his hand to Princess Elara. She accepts with a
-        shy smile, and they begin a graceful waltz through the open center of
-        the ballroom. Their eyes remain fixed on one another as her ivory skirt
-        turns naturally around them.
-      camera:
-        movement: arc
-        amplitude: normal
-        speed: slow
+    detailed_description: >-
+      A full-body medium-wide two-shot moves in a slow arc as Prince Adrian
+      offers his hand to Princess Elara. She accepts with a shy smile, and they
+      begin a graceful waltz through the open center of the ballroom. Their
+      eyes remain fixed on one another as her ivory skirt turns naturally
+      around them.
 
   # This clip inherits the dance's final frames and carries the motion forward.
   - id: dance_to_kiss
@@ -121,24 +111,12 @@ clips:
       notes: >-
         Continue their exact dance position and turning direction from the
         inherited frames. Preserve faces, costumes, and chandelier lighting.
-    shots:
-      - framing: medium two-shot
-        action: >-
-          Their waltz continues seamlessly, then slows beneath the central
-          chandelier. Adrian gently draws Elara closer as the surrounding
-          guests become still and the music softens.
-        camera:
-          movement: tracking
-          amplitude: small
-          speed: slow
-      - at: 5.5
-        framing: intimate close-up two-shot
-        action: >-
-          Elara rests one gloved hand against Adrian's cheek. They share a
-          tender, unhurried kiss as candlelight shimmers behind them. The final
-          image holds on their peaceful expressions while the waltz resolves.
-        camera:
-          movement: push_in
-          amplitude: small
-          speed: slow
+    detailed_description: >-
+      A medium two-shot tracks their waltz as it continues seamlessly and
+      slows beneath the central chandelier. Adrian gently draws Elara closer
+      while the surrounding guests become still and the music softens. At 5.5
+      seconds, move into an intimate close-up two-shot as Elara rests one
+      gloved hand against Adrian's cheek. They share a tender, unhurried kiss
+      as candlelight shimmers behind them. Hold the final image on their
+      peaceful expressions while the waltz resolves.
 """

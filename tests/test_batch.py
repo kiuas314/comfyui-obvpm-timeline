@@ -326,6 +326,27 @@ class BatchTests(unittest.TestCase):
         got = self.batch.parse_manifest(json.dumps(data))
         self.assertEqual(got["clips"][0]["prompt"], "exact H3 prompt")
 
+    def test_direct_detailed_description_needs_no_shot_schema(self):
+        data = self.structured_manifest()
+        clip = data["clips"][0]
+        clip.pop("shot")
+        clip.pop("dialogue")
+        clip["detailed_description"] = (
+            "A continuous handheld view follows Mara across the dome. "
+            "She whispers that the comet has returned.")
+        data["characters"]["mara"]["reference_image"] = 1
+        prompt = self.batch.parse_manifest(json.dumps(data))["clips"][0]["prompt"]
+        self.assertIn("detailed_description:\nLive-action cinematic", prompt)
+        self.assertIn("A continuous handheld view follows Mara", prompt)
+        self.assertIn("<Subject 1> is Mara Venn depicted in <Picture 1>", prompt)
+        self.assertNotIn("Mara Venn (S1) is a woman with hazel eyes", prompt)
+
+    def test_detailed_description_cannot_mix_with_legacy_shots(self):
+        data = self.structured_manifest()
+        data["clips"][0]["detailed_description"] = "A direct description."
+        with self.assertRaisesRegex(ValueError, "cannot combine"):
+            self.batch.parse_manifest(json.dumps(data))
+
     def test_forward_context_is_refused(self):
         data = self.manifest()
         data["clips"][0]["context"] = "middle"
