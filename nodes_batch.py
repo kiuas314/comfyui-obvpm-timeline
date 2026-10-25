@@ -484,6 +484,10 @@ class H3BatchCommit:
             "auto_export": ("BOOLEAN", {"default": True}),
             "export_filename_prefix": ("STRING", {"default": "full"}),
             "crf": ("INT", {"default": 19, "min": 0, "max": 51}),
+            "add_to_timeline": ("BOOLEAN", {
+                "default": True,
+                "tooltip": "After each successful commit, use the open "
+                           "Timeline's normal lineage-aware add operation."}),
         }}
 
     @classmethod
@@ -491,7 +495,7 @@ class H3BatchCommit:
         return float("nan")
 
     def commit(self, path, ticket, auto_export=True,
-               export_filename_prefix="full", crf=19):
+               export_filename_prefix="full", crf=19, add_to_timeline=True):
         try:
             item = json.loads(ticket)
         except (TypeError, ValueError):
@@ -569,6 +573,7 @@ class H3BatchCommit:
                     _write_state(state_path, state)
         status = {
             "batch_id": item["batch_id"], "clip_id": item["clip_id"],
+            "path": rel, "add_to_timeline": bool(add_to_timeline),
             "completed": len(completed), "total": total,
             "complete": complete, "final_path": final_path,
             "export_error": export_error,

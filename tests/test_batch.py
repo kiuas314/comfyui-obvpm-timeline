@@ -304,6 +304,9 @@ class BatchTests(unittest.TestCase):
             self.saved_take("inline-movie/opening_00001.mp4"),
             first[8], auto_export=False)
         self.assertFalse(result["result"][1])
+        self.assertEqual(result["ui"]["batch"][0]["path"],
+                         "inline-movie/opening_00001.mp4")
+        self.assertTrue(result["ui"]["batch"][0]["add_to_timeline"])
 
         second = planner.plan(yaml_text, "inline-v1", "inline-movie", 40)
         self.assertEqual(second[0], "B")

@@ -59,6 +59,9 @@ class BatchWorkflowTests(unittest.TestCase):
                          save["id"])
         self.assertIn("manifest_yaml",
                       [input_["name"] for input_ in planner["inputs"]])
+        self.assertIn("add_to_timeline",
+                      [input_["name"] for input_ in commit["inputs"]])
+        self.assertTrue(commit["widgets_values_named"]["add_to_timeline"])
 
     def test_original_engine_settings_remain_present(self):
         types = [node["type"] for node in self.workflow["nodes"]]
@@ -66,6 +69,9 @@ class BatchWorkflowTests(unittest.TestCase):
         self.assertIn("H3LivePreview", types)
         self.assertIn("MinimaxH3LatentUpscaler3D", types)
         self.assertIn("H3Timeline", types)
+        upscale_preview = self.nodes[1342]
+        self.assertEqual(upscale_preview["mode"], 2)
+        self.assertIn("disabled in batch", upscale_preview["title"])
 
     def test_batch_plan_has_its_own_full_height_group_and_ref_table_is_clear(self):
         planner = next(node for node in self.workflow["nodes"]

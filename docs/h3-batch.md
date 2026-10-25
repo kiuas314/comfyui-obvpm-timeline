@@ -19,6 +19,13 @@ uses `context: none`; `ballroom_dance` starts a second independent root; and
 a kiss. This provides both a hard-cut and a continuation test without editing
 the example first.
 
+Each successful H3 Batch Commit is automatically offered to the open Timeline
+using the same lineage-aware placement as the Result Preview's **+ add to
+timeline** button. Disable `add_to_timeline` on the commit node if you want to
+keep completed takes off the Timeline. The ready-wired batch workflow also
+disables the upscale result preview, because its batch path runs generation
+only; generated takes remain in the normal generation result preview.
+
 ## Authoring model
 
 The manifest separates durable production facts from events that happen in a

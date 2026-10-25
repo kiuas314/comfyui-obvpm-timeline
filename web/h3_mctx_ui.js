@@ -2077,6 +2077,39 @@ const TL_UPSCALE_HOVER = "rgba(38,132,144,0.95)";
 // unwired, the Timeline stays outside execution.
 const TL_REGISTRY = new Map();
 
+function tlRegistryMatches(clip) {
+    const text = String(clip ?? "");
+    const folder = text.includes("/")
+        ? text.slice(0, text.lastIndexOf("/")) : "";
+    return [...TL_REGISTRY.values()].filter((timeline) => {
+        const own = timeline.folder();
+        return !own || own === folder;
+    });
+}
+
+// H3 Batch Commit has already verified both the take and its context sidecar.
+// Offering it here follows the exact same lineage-aware placement path as the
+// Result Preview's "+ add to timeline" button, but needs no human click.
+if (!globalThis.__obvpmH3BatchTimeline) {
+    globalThis.__obvpmH3BatchTimeline = true;
+    api.addEventListener("executed", async ({ detail }) => {
+        const status = detail?.output?.batch?.[0];
+        if (!status?.path || !status.add_to_timeline) return;
+        const matches = tlRegistryMatches(status.path);
+        for (const timeline of matches) {
+            try {
+                await timeline.offer(status.path, {});
+            } catch (err) {
+                console.error("[obvpm h3] batch timeline add failed:", err);
+            }
+        }
+        if (!matches.length) {
+            console.warn("[obvpm h3] no open Timeline matched batch clip",
+                         status.path);
+        }
+    });
+}
+
 // ---- spacebar: play / pause ------------------------------------------------
 // Each Timeline registers {node, el, toggle}; one document listener picks
 // the timeline a Space is meant for and calls its toggle (which plays the
@@ -11134,12 +11167,7 @@ function buildResultPreview(node) {
     }
 
     function tlMatchesFor(clip) {
-        const folderOf = clip.includes("/")
-            ? clip.slice(0, clip.lastIndexOf("/")) : "";
-        return [...TL_REGISTRY.values()].filter((t) => {
-            const f = t.folder();
-            return !f || f === folderOf;
-        });
+        return tlRegistryMatches(clip);
     }
     // The decision taken on a take (added, or dismissed) is kept BY CLIP
     // in this browser's storage (see RP_STORE_KEY), so it survives a
@@ -11371,8 +11399,8 @@ function buildResultPreview(node) {
     const live = {
         alive: () => !!node.graph,
         describe: () => `#${node.id} watches ${rpScopeFolder(node) ?? "(any)"}`,
-        accepts: (d) => rpAccepts(node, d),
-        verdict: (d) => rpVerdict(node, d),
+        accepts: (d) => node.mode !== 2 && rpAccepts(node, d),
+        verdict: (d) => node.mode === 2 ? "no" : rpVerdict(node, d),
         show: (d) => node._h3ShowResult(d),
         node,
     };

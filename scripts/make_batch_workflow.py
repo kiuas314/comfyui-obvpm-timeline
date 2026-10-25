@@ -122,6 +122,9 @@ def commit_node():
          "widget": {"name": "export_filename_prefix"}, "link": None},
         {"localized_name": "crf", "name": "crf", "type": "INT",
          "widget": {"name": "crf"}, "link": None},
+        {"localized_name": "add_to_timeline", "name": "add_to_timeline",
+         "type": "BOOLEAN", "widget": {"name": "add_to_timeline"},
+         "link": None},
     ]
     outputs = [
         {"localized_name": name, "name": name, "type": output_type,
@@ -143,11 +146,12 @@ def commit_node():
         "outputs": outputs,
         "title": "H3 Batch Commit + Final Export",
         "properties": {"Node name for S&R": "H3BatchCommit"},
-        "widgets_values": [True, "full", 19],
+        "widgets_values": [True, "full", 19, True],
         "widgets_values_named": {
             "auto_export": True,
             "export_filename_prefix": "full",
             "crf": 19,
+            "add_to_timeline": True,
         },
         "color": "#243342",
         "bgcolor": "#354b60",
@@ -182,7 +186,9 @@ def note_node():
             "Resolution**. Leave Timeline upscaling off.\n"
             "5. Click **queue remaining** on the plan node.\n\n"
             "Each clip is checkpointed only after its MP4 and context sidecar "
-            "are saved. The final cut exports automatically when enabled on "
+            "are saved, then added to Timeline through the same lineage-aware "
+            "operation as its manual add button. The final cut exports "
+            "automatically when enabled on "
             "**H3 Batch Commit + Final Export**."
         ],
         "widgets_values_named": {},
@@ -232,6 +238,13 @@ def build():
     save = node_by_id(workflow, 1216)
     save["inputs"][6]["link"] = 3040
     save["inputs"][9]["link"] = 3041
+
+    # Batch runs generate takes only. A muted result widget must also refuse
+    # frontend events, otherwise its unreadable/stale scope can claim the
+    # generation intended for the normal result window.
+    upscale_preview = node_by_id(workflow, 1342)
+    upscale_preview["mode"] = 2
+    upscale_preview["title"] = "H3 Upscale Result [disabled in batch]"
 
     add_link(workflow, 3038, PLAN_ID, 0, 761, 0, "STRING")
     add_link(workflow, 3039, PLAN_ID, 5, 761, 3, "STRING")

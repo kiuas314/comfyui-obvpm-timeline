@@ -232,6 +232,12 @@ and `.mctx.safetensors` sidecar exist. Cancelling or losing a run leaves that
 clip active; running again resumes it. Keep `batch_id` to resume, or change it
 to start a new run without deleting the earlier takes.
 
+By default, every committed take is added to the open Timeline through the
+same lineage-aware operation as clicking **+ add to timeline** in Result
+Preview. Turn off `add_to_timeline` on H3 Batch Commit to disable this. The
+batch workflow's inactive upscale preview is muted so generated takes appear
+only in the normal generation result window.
+
 `context: none` makes a fresh root (a hard cut), `context: previous` extends
 the prior manifest clip, and `context: some_earlier_id` branches from any
 completed earlier clip. The mapping form adds per-join settings:
