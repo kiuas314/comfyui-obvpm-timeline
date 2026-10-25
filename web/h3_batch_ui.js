@@ -3,6 +3,10 @@ import { api } from "../../scripts/api.js";
 
 const NODE = "H3BatchPlan";
 const ROOT_BLOCKS = ["project", "characters", "locations", "audio", "lora_library", "defaults"];
+const CORE_CLIP_FIELDS = [
+    ["summary", "Summary", "long", "A concise overview of this clip for H3"],
+    ["detailed_description", "Detailed description", "long", "Write the complete action, staging, camera, and dialogue for this clip"],
+];
 const CLIP_FIELDS = [
     ["context", "Context", "context", "Start fresh, continue the previous clip, or branch from an earlier clip"],
     ["duration_seconds", "Duration (seconds)", "number", "Optional; otherwise defaults.duration_seconds or 8"],
@@ -13,7 +17,6 @@ const CLIP_FIELDS = [
     ["prompt", "Legacy prompt", "long", "Required only for version 1 manifests"],
     ["cast", "Cast", "cast", "Characters appearing in this clip"],
     ["location", "Location", "location", "Choose a location from the Story globals library"],
-    ["detailed_description", "Detailed description", "long", "Write the complete action, staging, camera, and dialogue for this clip"],
     ["music", "Music", "json", "Preset id, inline description, false, or 'none'"],
     ["soundscape", "Soundscape", "json", "Inline ambience, false, or 'none'"],
     ["continuity", "Continuity", "json", "Text or inherit_motion / inherit_action / notes object"],
@@ -144,6 +147,7 @@ function freshClip(index) {
         id: `clip_${index + 1}`,
         context: index ? "previous" : "none",
         duration_seconds: 8,
+        summary: "A concise summary of this clip.",
         detailed_description: "Describe everything visible and audible in this clip.",
     };
 }
@@ -267,16 +271,18 @@ function buildEditor(node) {
         }
     }
 
-    function fieldControl(clip, key, label, kind, help) {
+    function fieldControl(clip, key, label, kind, help, removable = true) {
         const wide = kind === "json" || kind === "long" || kind === "cast";
         const wrap = el("div", "h3be-field" + (wide ? " wide" : ""));
         const heading = el("div", "h3be-fieldhead");
-        heading.append(document.createTextNode(label),
-            button("×", `Remove ${label} override and use its default`, () => {
+        heading.append(document.createTextNode(label));
+        if (removable) {
+            heading.append(button("×", `Remove ${label} override and use its default`, () => {
                 delete clip[key];
                 renderClipPane();
                 scheduleSerialize();
             }, "danger"));
+        }
         wrap.append(heading, el("p", "", help));
         let control;
         const value = clip[key];
@@ -501,6 +507,44 @@ function buildEditor(node) {
         return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     }
 
+    function legacyDetailedDescription(clip) {
+        if (typeof clip.detailed_description === "string"
+                && clip.detailed_description.trim()) {
+            return clip.detailed_description.trim();
+        }
+        const legacy = Array.isArray(clip.shots)
+            ? clip.shots : (clip.shot ? [clip.shot] : []);
+        if (!legacy.length) {
+            return "Describe everything visible and audible in this clip.";
+        }
+        return legacy.map((shot, index) => {
+            const action = String(shot?.action ?? "").trim();
+            if (!index || shot?.at == null) return action;
+            return `At ${shot.at} seconds, ${action}`;
+        }).filter(Boolean).join("\n\n");
+    }
+
+    function legacySummary(clip) {
+        const detailed = legacyDetailedDescription(clip);
+        const firstSentence = detailed.split(/(?<=[.!?])\s+|\n/)[0]?.trim();
+        return firstSentence || documentModel.project?.story_context
+            || "A concise summary of this clip.";
+    }
+
+    function ensureCoreClipFields(clip) {
+        if (Number(documentModel.version ?? 2) !== 2) return;
+        if (!Object.prototype.hasOwnProperty.call(clip, "summary")) {
+            clip.summary = legacySummary(clip);
+        }
+        if (!Object.prototype.hasOwnProperty.call(clip, "detailed_description")) {
+            clip.detailed_description = legacyDetailedDescription(clip);
+            delete clip.shot;
+            delete clip.shots;
+            delete clip.dialogue;
+            delete clip.camera;
+        }
+    }
+
     function initialFieldValue(clip, key, kind) {
         const inherited = documentModel.defaults?.[key];
         if (inherited !== undefined) return cloneValue(inherited);
@@ -514,18 +558,6 @@ function buildEditor(node) {
             prompt: "Describe this clip.",
             cast: [],
             location: Object.keys(documentModel.locations ?? {})[0] ?? {},
-            detailed_description: (() => {
-                const legacy = Array.isArray(clip.shots)
-                    ? clip.shots : (clip.shot ? [clip.shot] : []);
-                if (!legacy.length) {
-                    return "Describe everything visible and audible in this clip.";
-                }
-                return legacy.map((shot, index) => {
-                    const action = String(shot?.action ?? "").trim();
-                    if (!index || shot?.at == null) return action;
-                    return `At ${shot.at} seconds, ${action}`;
-                }).filter(Boolean).join("\n\n");
-            })(),
             music: "default",
             soundscape: "",
             camera: {},
@@ -566,12 +598,6 @@ function buildEditor(node) {
             if (!definition) return;
             const [key, , kind] = definition;
             const initial = initialFieldValue(clip, key, kind);
-            if (key === "detailed_description") {
-                delete clip.shot;
-                delete clip.shots;
-                delete clip.dialogue;
-                delete clip.camera;
-            }
             clip[key] = initial;
             renderClipPane();
             scheduleSerialize();
@@ -659,6 +685,7 @@ function buildEditor(node) {
             pane.append(el("h3", "", "No clips"));
             return;
         }
+        ensureCoreClipFields(clip);
         const titleRow = el("div", "h3be-actions");
         titleRow.append(el("h3", "", `Clip ${selectedIndex + 1}`), el("span", "h3be-spacer"));
         titleRow.append(
@@ -679,6 +706,11 @@ function buildEditor(node) {
         idWrap.append(id);
         const fields = el("div", "h3be-fields");
         fields.append(idWrap);
+        if (Number(documentModel.version ?? 2) === 2) {
+            for (const definition of CORE_CLIP_FIELDS) {
+                fields.append(fieldControl(clip, ...definition, false));
+            }
+        }
         for (const definition of CLIP_FIELDS) {
             if (Object.prototype.hasOwnProperty.call(clip, definition[0])) {
                 fields.append(fieldControl(clip, ...definition));

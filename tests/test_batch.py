@@ -334,8 +334,11 @@ class BatchTests(unittest.TestCase):
         clip["detailed_description"] = (
             "A continuous handheld view follows Mara across the dome. "
             "She whispers that the comet has returned.")
+        clip["summary"] = "Mara crosses the dome and reveals the comet's return."
         data["characters"]["mara"]["reference_image"] = 1
         prompt = self.batch.parse_manifest(json.dumps(data))["clips"][0]["prompt"]
+        self.assertIn("summary:\nMara crosses the dome and reveals the comet's return.",
+                      prompt)
         self.assertIn("detailed_description:\nLive-action cinematic", prompt)
         self.assertIn("A continuous handheld view follows Mara", prompt)
         self.assertIn("<Subject 1> is Mara Venn depicted in <Picture 1>", prompt)
@@ -346,6 +349,26 @@ class BatchTests(unittest.TestCase):
         data["clips"][0]["detailed_description"] = "A direct description."
         with self.assertRaisesRegex(ValueError, "cannot combine"):
             self.batch.parse_manifest(json.dumps(data))
+
+    def test_direct_detailed_description_rejects_explicitly_empty_summary(self):
+        data = self.structured_manifest()
+        clip = data["clips"][0]
+        clip.pop("shot")
+        clip.pop("dialogue")
+        clip["detailed_description"] = "Mara crosses the dome."
+        clip["summary"] = ""
+        with self.assertRaisesRegex(ValueError, "summary is empty"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_direct_detailed_description_derives_legacy_missing_summary(self):
+        data = self.structured_manifest()
+        clip = data["clips"][0]
+        clip.pop("shot")
+        clip.pop("dialogue")
+        clip["detailed_description"] = "Mara crosses the dome. Then she stops."
+        prompt = self.batch.parse_manifest(json.dumps(data))["clips"][0]["prompt"]
+        self.assertIn("summary:\nMara returns during one stormy night. "
+                      "Mara crosses the dome. Then she stops.", prompt)
 
     def test_forward_context_is_refused(self):
         data = self.manifest()

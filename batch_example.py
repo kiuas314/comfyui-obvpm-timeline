@@ -81,6 +81,7 @@ clips:
     context: none
     location: castle_exterior
     cast: []
+    summary: A moonlit castle welcomes guests to the royal winter ball.
     detailed_description: >-
       An extreme wide establishing view approaches the glowing castle with a
       slow, small push-in. Snow drifts through the moonlight while tiny
@@ -92,6 +93,7 @@ clips:
     location: grand_ballroom
     cast: [princess, prince]
     duration_seconds: 8
+    summary: Prince Adrian and Princess Elara begin a graceful waltz.
     detailed_description: >-
       A full-body medium-wide two-shot moves in a slow arc as Prince Adrian
       offers his hand to Princess Elara. She accepts with a shy smile, and they
@@ -105,6 +107,7 @@ clips:
     location: grand_ballroom
     cast: [princess, prince]
     duration_seconds: 8
+    summary: Their waltz slows beneath the chandelier and ends in a tender kiss.
     continuity:
       inherit_motion: true
       inherit_action: true

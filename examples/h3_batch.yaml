@@ -92,6 +92,7 @@ clips:
     seed: 41001
     location: observatory_exterior
     cast: []
+    summary: A storm gathers around the illuminated observatory.
     detailed_description: >-
       A wide establishing shot slowly pushes toward the open dome. Lightning
       softly illuminates the clouds behind the observatory as warm light spills
@@ -99,6 +100,7 @@ clips:
 
   - id: enter_dome
     cast: [mara]
+    summary: Mara enters the dome and confronts the unchanged telescope.
     continuity:
       inherit_motion: true
       inherit_action: true
@@ -113,6 +115,7 @@ clips:
 
   - id: elias_reply
     cast: [mara, elias]
+    summary: Elias steps from the shadows and tells Mara he waited for her.
     detailed_description: >-
       A slow, small arc holds a medium two-shot as Elias emerges from the shadow
       beside the chart table. Mara remains beside the telescope and turns only
@@ -125,6 +128,7 @@ clips:
     seed: 92017
     location: summer_field
     cast: [mara]
+    summary: A childhood memory shows young Mara playing with a telescope.
     character_overrides:
       mara:
         appearance: >-
@@ -143,6 +147,7 @@ clips:
       mode: masked
     location: observatory_dome
     cast: [mara, elias]
+    summary: Mara sees the returning comet reflected in the open dome.
     continuity:
       inherit_motion: true
       inherit_action: true

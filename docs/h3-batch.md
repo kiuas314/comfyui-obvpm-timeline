@@ -62,8 +62,8 @@ particular clip:
 - `lora_library` gives installed content LoRAs short, reusable names.
 - `defaults` holds generation/context settings and common cast, location,
   music and optional `content_loras` values.
-- `clips` holds context routing, cast, a complete `detailed_description`, and
-  overrides including scene-specific content LoRAs.
+- `clips` holds context routing, cast, a required `summary`, a complete
+  `detailed_description`, and overrides including scene-specific content LoRAs.
 
 The **Story globals** tab has a structured character library editor. Create a
 stable character ID there, then edit its display name, Ref2V picture number,
@@ -106,11 +106,13 @@ clips:
       - preset: fantasy_light
         strength: 0.55
       - snow
+    summary: Snow crosses the moonlit castle.
     detailed_description: Snow crosses the moonlit castle.
 
   - id: neutral_interior
     context: none
     content_loras: []  # no manifest-controlled content LoRAs
+    summary: An undecorated room stands still.
     detailed_description: The undecorated room is still.
 ```
 
@@ -179,10 +181,13 @@ continuity:
 
 ## Detailed description
 
-Each clip has one free-form `detailed_description`. Write framing, action,
-camera movement, timing, and dialogue exactly as you want H3 to receive them:
+Each clip always shows two required text fields: `summary` and
+`detailed_description`. Summary is the concise clip overview placed in H3's
+`summary` section. Detailed description contains framing, action, camera
+movement, timing, and dialogue exactly as you want H3 to receive them:
 
 ```yaml
+summary: Mara approaches the telescope and realizes something is wrong.
 detailed_description: >-
   A medium-wide shot follows Mara toward the telescope. At 3.5 seconds, cut to
   a close-up as her hand stops over the focusing wheel. Under her breath, she
@@ -192,9 +197,11 @@ detailed_description: >-
 The compiler prepends the selected global visual style and location description,
 then uses this text without decomposing it into framing/action/camera fields.
 Locations are selected by ID from the **Story globals** location library. The
-older `shot` and `shots` schema remains import-compatible; adding **Detailed
-description** to a legacy clip in the visual editor converts its action text to
-the simpler form.
+visual editor keeps Summary and Detailed description visible and non-removable
+on every version 2 clip. The older `shot` and `shots` schema remains
+import-compatible; opening a legacy clip in the visual editor derives its
+summary and converts its action text to the simpler form. A manifest imported
+without `summary` also receives a derived summary so older files keep working.
 
 ## Compiled output
 

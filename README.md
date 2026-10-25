@@ -266,7 +266,7 @@ count again.
 
 Manifest version 2 can define project-wide visual continuity, a reusable
 character bible with stable speaker IDs, locations, soundscapes, named music,
-and a free-form detailed description for each clip. H3 Batch Plan compiles
+and required summary and free-form detailed description fields for each clip. H3 Batch Plan compiles
 those fields into `subject_definitions`, `summary`, `retention_analysis`,
 `detailed_description`, `overall_soundscape`, and `Non_diegetic_music`.
 Reference-bound characters take their identity from their Picture rather than

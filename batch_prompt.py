@@ -24,7 +24,7 @@ STRUCTURED_DEFAULT_FIELDS = {"cast", "location", "music", "camera", "soundscape"
 STRUCTURED_CLIP_FIELDS = {
     "raw_prompt", "cast", "location", "music", "camera", "soundscape",
     "continuity", "shot", "shots", "dialogue", "character_overrides",
-    "detailed_description",
+    "summary", "detailed_description",
 }
 SHOT_FIELDS = {
     "at", "framing", "action", "camera", "cast", "dialogue", "transition",
@@ -508,10 +508,18 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                 "from <Picture %d>; do not replace them with a textual "
                 "appearance." % (picture, picture))
     subject_text = "\n".join(subjects) if subjects else "N/A"
-    summary = summary_actions[0] if summary_actions else "N/A"
-    story = globals_["project"].get("story_context")
-    if story:
-        summary = "%s %s" % (story, summary)
+    summary_override = clip.get("summary")
+    if summary_override is not None:
+        if not isinstance(summary_override, str) or not summary_override.strip():
+            raise ValueError("H3 batch: clip %r summary is empty." % clip_id)
+        summary = summary_override.strip()
+    else:
+        # Compatibility for manifests created before summary became a core
+        # editor field. The visual editor persists a derived value on open.
+        summary = summary_actions[0] if summary_actions else "N/A"
+        story = globals_["project"].get("story_context")
+        if story:
+            summary = "%s %s" % (story, summary)
     retention = reference_retention + retention
     retention_text = "\n".join(retention) if retention else "N/A"
 
