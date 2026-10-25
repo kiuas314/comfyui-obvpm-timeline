@@ -136,12 +136,6 @@ class BatchTests(unittest.TestCase):
             ],
         }
 
-    def write_manifest(self, data=None):
-        path = os.path.join(self.input, "film.yaml")
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(data or self.manifest(), handle)
-        return path
-
     def saved_take(self, rel):
         path = os.path.join(self.output, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -235,10 +229,10 @@ class BatchTests(unittest.TestCase):
             self.batch.parse_manifest(json.dumps(data))
 
     def test_active_item_repeats_until_commit_then_advances(self):
-        self.write_manifest()
+        manifest_yaml = json.dumps(self.manifest())
         planner = self.batch.H3BatchPlan()
-        first = planner.plan("film.yaml", "movie-v1", "movie", 100)
-        again = planner.plan("film.yaml", "movie-v1", "movie", 100)
+        first = planner.plan(manifest_yaml, "movie-v1", "movie", 100)
+        again = planner.plan(manifest_yaml, "movie-v1", "movie", 100)
         self.assertEqual(first[7], again[7])  # metadata
         self.assertEqual(first[8], again[8])  # ticket
         self.assertEqual(first[2], 100)
@@ -248,20 +242,20 @@ class BatchTests(unittest.TestCase):
         result = self.batch.H3BatchCommit().commit(
             first_path, first[8], auto_export=False)
         self.assertFalse(result["result"][1])
-        second = planner.plan("film.yaml", "movie-v1", "movie", 100)
+        second = planner.plan(manifest_yaml, "movie-v1", "movie", 100)
         self.assertEqual(second[0], "B")
         self.assertEqual(second[2], 101)
         self.assertEqual(second[4][0]["source_path"],
                          "movie/opening_00001.mp4")
 
     def test_named_context_and_final_sequence(self):
-        self.write_manifest()
+        manifest_yaml = json.dumps(self.manifest())
         planner = self.batch.H3BatchPlan()
         commit = self.batch.H3BatchCommit()
         tickets = []
         paths = []
         for i, name in enumerate(("opening", "middle", "callback")):
-            planned = planner.plan("film.yaml", "movie-v2", "movie", 5)
+            planned = planner.plan(manifest_yaml, "movie-v2", "movie", 5)
             if i == 2:
                 self.assertEqual(planned[4][0]["source_path"], paths[0])
             rel = "movie/%s_00001.mp4" % name
@@ -277,27 +271,14 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(len(preview.export_calls), 1)
         self.assertEqual(preview.export_calls[0][0][0], "\n".join(paths))
 
-    def test_changed_manifest_does_not_reuse_checkpoint(self):
-        path = self.write_manifest()
-        self.batch.H3BatchPlan().plan(path, "movie-v3", "movie", 0)
-        changed = self.manifest()
-        changed["clips"][0]["prompt"] = "changed"
-        self.write_manifest(changed)
-        with self.assertRaisesRegex(ValueError, "manifest changed"):
-            self.batch.H3BatchPlan().plan(
-                path, "movie-v3", "movie", 0)
-
     def test_pasted_yaml_plans_commits_and_resumes_without_a_file(self):
         yaml_text = json.dumps(self.manifest())
         planner = self.batch.H3BatchPlan()
-        first = planner.plan(
-            "", "inline-v1", "inline-movie", 40,
-            manifest_yaml=yaml_text)
+        first = planner.plan(yaml_text, "inline-v1", "inline-movie", 40)
         self.assertEqual(first[0], "A")
         self.assertEqual(first[2], 40)
         ticket = json.loads(first[8])
-        self.assertTrue(ticket["manifest_inline"])
-        self.assertEqual(ticket["manifest_path"], "")
+        self.assertEqual(ticket["manifest_source"], "<pasted YAML>")
         self.assertEqual(ticket["total"], 3)
 
         result = self.batch.H3BatchCommit().commit(
@@ -305,27 +286,27 @@ class BatchTests(unittest.TestCase):
             first[8], auto_export=False)
         self.assertFalse(result["result"][1])
 
-        second = planner.plan(
-            "this-file-is-ignored.yaml", "inline-v1", "inline-movie", 40,
-            manifest_yaml=yaml_text)
+        second = planner.plan(yaml_text, "inline-v1", "inline-movie", 40)
         self.assertEqual(second[0], "B")
         self.assertEqual(second[2], 41)
 
     def test_changed_pasted_yaml_does_not_reuse_checkpoint(self):
         planner = self.batch.H3BatchPlan()
-        planner.plan("", "inline-v2", "inline-movie", 0,
-                     manifest_yaml=json.dumps(self.manifest()))
+        planner.plan(json.dumps(self.manifest()), "inline-v2", "inline-movie", 0)
         changed = self.manifest()
         changed["clips"][0]["prompt"] = "changed"
         with self.assertRaisesRegex(ValueError, "manifest changed"):
-            planner.plan("", "inline-v2", "inline-movie", 0,
-                         manifest_yaml=json.dumps(changed))
+            planner.plan(json.dumps(changed), "inline-v2", "inline-movie", 0)
 
-    def test_pasted_yaml_widget_is_multiline_and_optional(self):
+    def test_pasted_yaml_widget_is_multiline_and_required(self):
         inputs = self.batch.H3BatchPlan.INPUT_TYPES()
-        config = inputs["optional"]["manifest_yaml"][1]
+        config = inputs["required"]["manifest_yaml"][1]
         self.assertTrue(config["multiline"])
         self.assertFalse(config["dynamicPrompts"])
+
+    def test_empty_pasted_yaml_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "manifest_yaml is empty"):
+            self.batch.H3BatchPlan().plan("", "empty-v1", "movie", 0)
 
 
 if __name__ == "__main__":

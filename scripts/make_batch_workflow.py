@@ -61,9 +61,8 @@ def plan_node():
     ]
     inputs = []
     for name, input_type in (
-            ("manifest_path", "STRING"), ("batch_id", "STRING"),
-            ("base_folder", "STRING"), ("base_seed", "INT"),
-            ("manifest_yaml", "STRING")):
+            ("manifest_yaml", "STRING"), ("batch_id", "STRING"),
+            ("base_folder", "STRING"), ("base_seed", "INT")):
         inputs.append({
             "localized_name": name,
             "name": name,
@@ -91,13 +90,12 @@ def plan_node():
         "outputs": outputs,
         "title": "H3 YAML Batch Plan — queue remaining",
         "properties": {"Node name for S&R": "H3BatchPlan"},
-        "widgets_values": ["h3_batch.yaml", "film-v1", "my_project", 0, ""],
+        "widgets_values": ["", "film-v1", "my_project", 0],
         "widgets_values_named": {
-            "manifest_path": "h3_batch.yaml",
+            "manifest_yaml": "",
             "batch_id": "film-v1",
             "base_folder": "my_project",
             "base_seed": 0,
-            "manifest_yaml": "",
         },
         "color": "#243342",
         "bgcolor": "#354b60",
@@ -166,8 +164,7 @@ def note_node():
         "widgets_values": [
             "## Unattended YAML batch\n\n"
             "1. Paste the complete manifest into `manifest_yaml` on **H3 "
-            "YAML Batch Plan**. Alternatively, leave it empty and use "
-            "`manifest_path`.\n"
+            "YAML Batch Plan**.\n"
             "2. Choose a new `batch_id`; keep it unchanged to resume.\n"
             "3. Set the shared output `base_folder`.\n"
             "4. Set aspect ratio and megapixels in **Batch Prompt + "

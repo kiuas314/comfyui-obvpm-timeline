@@ -207,9 +207,8 @@ that cannot update yet.
 changing the supervised Timeline workflow. Start from
 [`examples/h3_batch.yaml`](examples/h3_batch.yaml), load the ready-wired
 `007A-batch` workflow, and paste the complete file into the plan node's
-multiline `manifest_yaml` field. Pasted YAML takes precedence over
-`manifest_path`; leave the field empty if you prefer a path relative to
-ComfyUI's input folder or an absolute path. In a custom workflow, wire:
+multiline `manifest_yaml` field. The YAML is stored directly inside the ComfyUI
+workflow. In a custom workflow, wire:
 
 ```
 Batch Plan prompt/negative_prompt -> the two text encoders

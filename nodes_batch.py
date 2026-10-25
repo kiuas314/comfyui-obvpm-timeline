@@ -199,29 +199,14 @@ def parse_manifest(text, source="manifest"):
     return result
 
 
-def _manifest_path(value):
-    path = os.path.expanduser(str(value or "").strip())
-    if not path:
-        raise ValueError("H3 batch: manifest_path is empty.")
-    if not os.path.isabs(path):
-        path = os.path.join(folder_paths.get_input_directory(), path)
-    path = os.path.abspath(path)
-    if not os.path.isfile(path):
-        raise ValueError("H3 batch: manifest not found: %s" % path)
-    return path
-
-
-def load_manifest(path, yaml_text=""):
-    """Load a manifest from pasted YAML, falling back to a file path."""
+def load_manifest(yaml_text):
+    """Parse and identify a manifest pasted into the workflow."""
     yaml_text = str(yaml_text or "")
-    if yaml_text.strip():
-        source = "<inline YAML>"
-        manifest = parse_manifest(yaml_text, source)
-    else:
-        path = _manifest_path(path)
-        with open(path, "r", encoding="utf-8") as handle:
-            manifest = parse_manifest(handle.read(), path)
-        source = path
+    if not yaml_text.strip():
+        raise ValueError("H3 batch: manifest_yaml is empty. Paste the complete "
+                         "YAML manifest into H3 Batch Plan.")
+    source = "<pasted YAML>"
+    manifest = parse_manifest(yaml_text, source)
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"),
                            ensure_ascii=False).encode("utf-8")
     return manifest, hashlib.sha256(canonical).hexdigest(), source
@@ -271,22 +256,22 @@ def _write_state(path, state):
             pass
 
 
-def _new_state(batch_id, manifest_hash, manifest_path):
+def _new_state(batch_id, manifest_hash, manifest_source):
     return {
         "version": _STATE_VERSION,
         "batch_id": batch_id,
         "manifest_hash": manifest_hash,
-        "manifest_path": manifest_path,
+        "manifest_source": manifest_source,
         "completed": [],
         "active": None,
         "final_path": "",
     }
 
 
-def _validated_state(path, batch_id, manifest_hash, manifest_path):
+def _validated_state(path, batch_id, manifest_hash, manifest_source):
     state = _read_state(path)
     if state is None:
-        state = _new_state(batch_id, manifest_hash, manifest_path)
+        state = _new_state(batch_id, manifest_hash, manifest_source)
         _write_state(path, state)
     if state.get("version") != _STATE_VERSION:
         raise ValueError("H3 batch: checkpoint %s has an unsupported version."
@@ -317,8 +302,8 @@ def _relative_clip(path):
     return os.path.relpath(absolute, root).replace(os.sep, "/")
 
 
-def batch_status(manifest_path, batch_id, base_folder, manifest_yaml=""):
-    manifest, digest, source = load_manifest(manifest_path, manifest_yaml)
+def batch_status(manifest_yaml, batch_id, base_folder):
+    manifest, digest, source = load_manifest(manifest_yaml)
     path = _state_path(base_folder, batch_id)
     with _LOCK:
         state = _validated_state(path, batch_id, digest, source)
@@ -348,10 +333,9 @@ def register():
         try:
             data = await request.json()
             found = await asyncio.to_thread(
-                batch_status, str(data.get("manifest_path", "")),
+                batch_status, str(data.get("manifest_yaml", "")),
                 str(data.get("batch_id", "")),
-                str(data.get("base_folder", "")),
-                str(data.get("manifest_yaml", "")))
+                str(data.get("base_folder", "")))
             # The absolute checkpoint path is useful in Python errors but is
             # not sent to a browser that only needs counts and state.
             found.pop("state_path", None)
@@ -370,19 +354,19 @@ class H3BatchPlan:
                     "pin_specs", "base_folder", "filename_prefix",
                     "metadata", "ticket", "index", "total")
     DESCRIPTION = (
-        "Reads the next unfinished clip from pasted YAML or a YAML file. "
-        "Queue this workflow once per remaining clip; H3 Batch Commit "
+        "Reads the next unfinished clip from YAML pasted into the node. Queue "
+        "this workflow once per remaining clip; H3 Batch Commit "
         "checkpoints each successful save, so an interruption resumes the "
         "same item.")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
-            "manifest_path": ("STRING", {
-                "default": "h3_batch.yaml",
-                "tooltip": "Fallback when manifest_yaml is empty: an "
-                           "absolute path, or a path relative to ComfyUI's "
-                           "input folder."}),
+            "manifest_yaml": ("STRING", {
+                "default": "", "multiline": True,
+                "dynamicPrompts": False,
+                "tooltip": "Paste the complete YAML manifest here. It is "
+                           "saved inside the ComfyUI workflow."}),
             "batch_id": ("STRING", {
                 "default": "film-v1",
                 "tooltip": "Checkpoint identity. Change it to start a new "
@@ -395,13 +379,6 @@ class H3BatchPlan:
                 "default": 0, "min": 0, "max": 2 ** 64 - 1,
                 "tooltip": "Used as base_seed + clip index when a clip has "
                            "no explicit seed."}),
-        }, "optional": {
-            "manifest_yaml": ("STRING", {
-                "default": "", "multiline": True,
-                "dynamicPrompts": False,
-                "tooltip": "Paste the complete YAML manifest here. When "
-                           "non-empty, this takes precedence over "
-                           "manifest_path."}),
         }}
 
     @classmethod
@@ -409,10 +386,9 @@ class H3BatchPlan:
         # The checkpoint changes between otherwise-identical queued prompts.
         return float("nan")
 
-    def plan(self, manifest_path, batch_id, base_folder, base_seed=0,
-             manifest_yaml=""):
+    def plan(self, manifest_yaml, batch_id, base_folder, base_seed=0):
         compat.require()
-        manifest, digest, source = load_manifest(manifest_path, manifest_yaml)
+        manifest, digest, source = load_manifest(manifest_yaml)
         state_path = _state_path(base_folder, batch_id)
         with _LOCK:
             state = _validated_state(state_path, batch_id, digest, source)
@@ -468,9 +444,7 @@ class H3BatchPlan:
             "version": _STATE_VERSION,
             "batch_id": batch_id,
             "manifest_hash": digest,
-            "manifest_path": source if source != "<inline YAML>" else "",
             "manifest_source": source,
-            "manifest_inline": source == "<inline YAML>",
             "base_folder": _folder_text(base_folder),
             "clip_id": clip["id"],
             "index": index,
@@ -522,21 +496,12 @@ class H3BatchCommit:
             raise ValueError("H3 batch: invalid commit ticket.")
         if item.get("version") != _STATE_VERSION:
             raise ValueError("H3 batch: commit ticket version mismatch.")
-        if item.get("manifest_inline"):
-            digest = item.get("manifest_hash")
-            source = item.get("manifest_source") or "<inline YAML>"
-            total = int(item.get("total", 0))
-            if not digest or total < 1:
-                raise ValueError("H3 batch: inline manifest ticket is missing "
-                                 "its identity or clip count.")
-        else:
-            manifest, digest, source = load_manifest(item.get("manifest_path"))
-            if digest != item.get("manifest_hash"):
-                raise ValueError("H3 batch: manifest changed before commit; "
-                                 "the take was saved but the checkpoint was "
-                                 "not advanced. Restore the manifest or use "
-                                 "a new batch_id.")
-            total = len(manifest["clips"])
+        digest = item.get("manifest_hash")
+        source = item.get("manifest_source") or "<pasted YAML>"
+        total = int(item.get("total", 0))
+        if not digest or total < 1:
+            raise ValueError("H3 batch: manifest ticket is missing its "
+                             "identity or clip count.")
         rel = _relative_clip(path)
         absolute = os.path.join(folder_paths.get_output_directory(), rel)
         if not os.path.isfile(absolute):

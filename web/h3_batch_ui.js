@@ -29,7 +29,6 @@ app.registerExtension({
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
-                                    manifest_path: widgetValue(node, "manifest_path"),
                                     manifest_yaml: widgetValue(node, "manifest_yaml"),
                                     batch_id: widgetValue(node, "batch_id"),
                                     base_folder: widgetValue(node, "base_folder"),

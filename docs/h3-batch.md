@@ -10,10 +10,8 @@ The compiled layout follows MiniMax's
 The complete example is [`examples/h3_batch.yaml`](../examples/h3_batch.yaml).
 
 Paste that complete YAML directly into H3 Batch Plan's multiline
-`manifest_yaml` field. It is stored with the ComfyUI workflow and takes
-precedence over `manifest_path`. Leave `manifest_yaml` empty only when you
-want the planner to read an absolute path or a path relative to ComfyUI's
-input folder instead.
+`manifest_yaml` field. It is stored with the ComfyUI workflow, so no separate
+manifest file is required.
 
 ## Authoring model
 
