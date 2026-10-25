@@ -20,6 +20,7 @@ import folder_paths
 from . import compat
 from . import mctx
 from . import wiretypes as wt
+from . import batch_prompt
 from .nodes_assemble import H3Timeline
 
 _LOG = logging.getLogger("obvpm.h3")
@@ -69,14 +70,28 @@ def parse_manifest(text, source="manifest"):
     if not isinstance(clips, list) or not clips:
         raise ValueError("H3 batch: 'clips' must be a non-empty list.")
     version = int(root.get("version", 1))
-    if version != 1:
+    if version not in (1, 2):
         raise ValueError("H3 batch: unsupported manifest version %s."
                          % version)
+
+    globals_ = None
+    if version == 2:
+        allowed_root = {
+            "version", "project", "characters", "locations", "audio",
+            "defaults", "clips",
+        }
+        unknown_root = sorted(set(root) - allowed_root)
+        if unknown_root:
+            raise ValueError("H3 batch: manifest has unknown fields: %s."
+                             % ", ".join(unknown_root))
+        globals_ = batch_prompt.normalize_globals(root)
 
     allowed_defaults = {
         "negative_prompt", "duration_seconds", "context", "window",
         "mode", "seed", "filename_prefix", "metadata",
     }
+    if version == 2:
+        allowed_defaults |= batch_prompt.STRUCTURED_DEFAULT_FIELDS
     unknown = sorted(set(defaults) - allowed_defaults)
     if unknown:
         raise ValueError("H3 batch: unknown defaults: %s."
@@ -86,6 +101,8 @@ def parse_manifest(text, source="manifest"):
     for index, item in enumerate(clips):
         clip = _as_mapping(item, "clips[%d]" % index)
         allowed_clip = allowed_defaults | {"id", "prompt"}
+        if version == 2:
+            allowed_clip |= batch_prompt.STRUCTURED_CLIP_FIELDS
         unknown = sorted(set(clip) - allowed_clip)
         if unknown:
             raise ValueError("H3 batch: clip %d has unknown fields: %s."
@@ -99,11 +116,6 @@ def parse_manifest(text, source="manifest"):
                 "and contain only letters, numbers, '.', '_' or '-'." % index)
         if clip_id in seen:
             raise ValueError("H3 batch: duplicate clip id %r." % clip_id)
-        prompt = merged.get("prompt")
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise ValueError("H3 batch: clip %r needs a non-empty prompt."
-                             % clip_id)
-
         context = merged.get("context", "none" if index == 0 else "previous")
         context_opts = {}
         if isinstance(context, dict):
@@ -154,10 +166,24 @@ def parse_manifest(text, source="manifest"):
             raise ValueError("H3 batch: clip %r metadata must be a mapping."
                              % clip_id)
 
+        if version == 1:
+            prompt = merged.get("prompt")
+            if not isinstance(prompt, str) or not prompt.strip():
+                raise ValueError("H3 batch: clip %r needs a non-empty prompt."
+                                 % clip_id)
+            prompt = prompt.strip()
+            negative_prompt = str(merged.get("negative_prompt") or "")
+        else:
+            prompt = batch_prompt.compile_prompt(
+                globals_, clip, defaults, context, duration, clip_id)
+            negative_prompt = str(
+                merged.get("negative_prompt")
+                or globals_["project"].get("negative_prompt") or "")
+
         out.append({
             "id": clip_id,
-            "prompt": prompt.strip(),
-            "negative_prompt": str(merged.get("negative_prompt") or ""),
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
             "duration_seconds": duration,
             "context": context,
             "window": window,
@@ -167,7 +193,10 @@ def parse_manifest(text, source="manifest"):
             "filename_prefix": prefix,
             "metadata": dict(metadata or {}),
         })
-    return {"version": version, "clips": out}
+    result = {"version": version, "clips": out}
+    if globals_ is not None:
+        result["authoring"] = globals_
+    return result
 
 
 def _manifest_path(value):
@@ -409,11 +438,14 @@ class H3BatchPlan:
         metadata = dict(clip["metadata"])
         metadata.update({
             "batch_id": batch_id,
+            "batch_manifest_version": manifest["version"],
             "clip_id": clip["id"],
             "clip_index": index,
             "prompt": clip["prompt"],
             "seed": seed,
         })
+        if manifest["version"] == 2:
+            metadata["prompt_format"] = "h3_base"
         ticket = json.dumps({
             "version": _STATE_VERSION,
             "batch_id": batch_id,

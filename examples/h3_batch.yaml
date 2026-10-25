@@ -1,49 +1,190 @@
-version: 1
+version: 2
+
+project:
+  title: The Observatory
+  prompt_format: h3_base
+  language: English
+  visual_style: >-
+    Live-action cinematic science fiction with restrained natural
+    performances, anamorphic lenses, shallow depth of field, subtle film
+    grain, realistic skin texture, and cool moonlight contrasted with warm
+    tungsten practicals.
+  story_context: >-
+    During one stormy night, astronomer Mara Venn returns to the abandoned
+    coastal observatory where her estranged father Elias has secretly kept
+    watch for a comet they first discovered together.
+  continuity: >-
+    Clothing, character age, props, weather, and lighting direction remain
+    consistent throughout the film unless a clip explicitly overrides them.
+  negative_prompt: >-
+    subtitles, captions, title cards, watermark, distorted hands, duplicate
+    people, inconsistent clothing, abrupt lighting changes, low quality
+
+characters:
+  mara:
+    name: Mara Venn
+    speaker_id: S1
+    appearance: >-
+      a 38-year-old woman with an angular face, olive skin, tired hazel eyes,
+      and shoulder-length black hair containing one silver streak
+    wardrobe: >-
+      a dark navy wool coat over a burgundy turtleneck, with a worn brass
+      observatory key hanging from a leather cord
+    voice: >-
+      a low, controlled English voice with a faint northern accent,
+      deliberate pacing, and restrained emotion
+
+  elias:
+    name: Elias Venn
+    speaker_id: S2
+    appearance: >-
+      a thin 68-year-old man with weathered pale skin, white hair, and round
+      wire-frame glasses
+    wardrobe: >-
+      a brown tweed waistcoat, rolled white sleeves, and dark trousers
+    voice: >-
+      a soft, breathy English voice spoken slowly with occasional pauses
+
+locations:
+  observatory_exterior:
+    description: >-
+      An old stone observatory stands above a stormy sea at blue hour. Its
+      open dome glows with warm tungsten light beneath fast-moving clouds.
+    soundscape: >-
+      Strong coastal wind, rough surf, and rain surround the observatory while
+      distant thunder rolls across the sea.
+
+  observatory_dome:
+    description: >-
+      Inside the old stone observatory are a large brass telescope, a rotating
+      timber dome, scattered star charts, and warm tungsten desk lamps.
+    soundscape: >-
+      Wind presses against the dome, rain taps the glass, and old machinery
+      creaks quietly above the distant sea.
+
+  summer_field:
+    description: >-
+      A sunlit summer field of tall dry grass beneath a cloudless afternoon
+      sky.
+    soundscape: >-
+      Warm wind moves through the grass with distant insects and birds.
+
+audio:
+  default_music: >-
+    A restrained slow score of low cello and sparse piano notes, with no
+    percussion and no dramatic swell.
+  music:
+    memory: >-
+      A delicate solo piano phrase at a slow tempo with no other instruments.
 
 defaults:
   duration_seconds: 8
-  negative_prompt: >-
-    subtitles, captions, title cards, watermark, low quality
-  # Every clip after the first continues the previous clip unless it says
-  # otherwise. masked preserves the shared latent/audio context exactly.
+  # Every clip after the first continues the previous clip unless overridden.
   context: previous
   window: 39
   mode: masked
+  location: observatory_dome
+  music: default
+  camera:
+    movement: static
+    amplitude: normal
+    speed: normal
 
 clips:
   - id: establishing
     context: none
     seed: 41001
-    prompt: >-
-      Wide cinematic establishing shot of an old observatory above a stormy
-      sea at blue hour. The camera slowly pushes toward the open dome while
-      warm tungsten light spills through the windows. Natural motion, detailed
-      atmosphere, no cuts.
+    location: observatory_exterior
+    cast: []
+    shot:
+      framing: wide establishing shot
+      action: >-
+        Lightning softly illuminates the clouds behind the observatory as warm
+        light spills through the windows and rain crosses the frame.
+      camera:
+        movement: push_in
+        amplitude: small
+        speed: slow
+        target: the open dome
 
   - id: enter_dome
-    prompt: >-
-      Continue the same camera move through the open dome. A lone astronomer
-      crosses frame and reaches for the brass telescope as distant lightning
-      softly illuminates the room. Preserve the character, lighting, weather,
-      and camera momentum from the previous shot.
+    cast: [mara]
+    continuity:
+      inherit_motion: true
+      inherit_action: true
+      notes: >-
+        Preserve the direction of the storm light and the forward camera
+        momentum from the exterior approach.
+    shot:
+      framing: medium-wide shot
+      action: >-
+        Mara enters the dome, crosses toward the telescope, and closes her
+        right hand around the brass focusing wheel.
+      camera:
+        movement: tracking
+        amplitude: small
+        speed: slow
+    dialogue:
+      - speaker: mara
+        delivery: quietly without looking away from the telescope
+        text: "You kept it pointed at the same star."
+
+  - id: elias_reply
+    cast: [mara, elias]
+    shot:
+      framing: medium two-shot
+      action: >-
+        Elias emerges from the shadow beside the chart table. Mara remains
+        beside the telescope and turns only her head toward him.
+      camera:
+        movement: arc
+        amplitude: small
+        speed: slow
+    dialogue:
+      - speaker: elias
+        delivery: with a tired half-smile
+        text: "I was waiting for you to come back."
 
   - id: memory_insert
-    # A fresh root creates a deliberate hard cut and shares no latent context.
+    # A fresh root makes a deliberate hard cut and shares no latent context.
     context: none
     seed: 92017
-    prompt: >-
-      Sunlit handheld close-up of the same astronomer as a child holding a
-      handmade cardboard telescope in a summer field. Warm nostalgic colour,
-      wind moving the tall grass, intimate documentary movement.
+    location: summer_field
+    cast: [mara]
+    character_overrides:
+      mara:
+        appearance: >-
+          an eight-year-old girl with Mara's same hazel eyes and black hair
+        wardrobe: a faded yellow summer dress
+    music: memory
+    shot:
+      framing: handheld close-up
+      action: >-
+        Young Mara raises a handmade cardboard telescope and squints through
+        it while tall grass moves around her.
+      camera:
+        movement: handheld
+        amplitude: small
+        speed: slow
 
   - id: return_to_dome
-    # Continue an earlier named clip rather than the immediately previous one.
+    # Branch from the earlier dome take rather than from the memory insert.
     context:
-      from: enter_dome
+      from: elias_reply
       window: 39
       mode: masked
-    prompt: >-
-      Continue inside the stormy observatory from the exact prior motion. The
-      astronomer looks up from the telescope as a brilliant comet becomes
-      visible through the dome, reflected in their eyes. Slow push-in.
-
+    location: observatory_dome
+    cast: [mara, elias]
+    continuity:
+      inherit_motion: true
+      inherit_action: true
+    shot:
+      framing: close-up on Mara beside the telescope
+      action: >-
+        Mara looks up as a brilliant comet becomes visible through the open
+        dome, reflected in her eyes. Elias remains still in the background.
+      camera:
+        movement: push_in
+        amplitude: small
+        speed: slow
+        target: Mara's reflected eyes

@@ -238,6 +238,14 @@ If an individual generation errors, already committed clips remain safe; clear
 or let the failed queue entries finish, fix the cause, and queue the remaining
 count again.
 
+Manifest version 2 can define project-wide visual continuity, a reusable
+character bible with stable speaker IDs, locations, soundscapes, named music,
+camera direction, dialogue and timed internal shots. H3 Batch Plan compiles
+those fields into H3's `integrated_multimodal_description`,
+`overall_soundscape` and `non_diegetic_music` prompt layout. See the
+[batch authoring guide](docs/h3-batch.md). Version 1 raw-prompt manifests stay
+compatible, and version 2 also offers `raw_prompt` as a per-clip escape hatch.
+
 ## Other Notes
 
 Every node in this pack is listed with **(obvpm)** after its name, so

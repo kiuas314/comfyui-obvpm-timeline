@@ -84,6 +84,58 @@ class BatchTests(unittest.TestCase):
             ],
         }
 
+    @staticmethod
+    def structured_manifest():
+        return {
+            "version": 2,
+            "project": {
+                "prompt_format": "h3_base",
+                "language": "English",
+                "visual_style": "Live-action cinematic, subtle film grain.",
+                "story_context": "Mara returns during one stormy night.",
+                "continuity": "Clothing and lighting remain consistent.",
+                "negative_prompt": "subtitles, watermark",
+            },
+            "characters": {
+                "mara": {
+                    "name": "Mara Venn", "speaker_id": "S1",
+                    "appearance": "a woman with hazel eyes and black hair",
+                    "wardrobe": "a navy wool coat",
+                    "voice": "a low, controlled English voice",
+                },
+            },
+            "locations": {
+                "dome": {
+                    "description": "An old stone observatory above the sea.",
+                    "soundscape": "Rain taps the glass.",
+                },
+            },
+            "audio": {"default_music": "Sparse piano at a slow tempo."},
+            "defaults": {
+                "duration_seconds": 8, "context": "previous",
+                "location": "dome", "cast": ["mara"], "music": "default",
+                "camera": {"movement": "push_in", "amplitude": "small",
+                           "speed": "slow"},
+            },
+            "clips": [
+                {
+                    "id": "opening", "context": "none",
+                    "shot": {
+                        "framing": "medium-wide shot",
+                        "action": "Mara crosses toward the telescope.",
+                    },
+                    "dialogue": [{"speaker": "mara", "delivery": "quietly",
+                                  "text": "You kept it pointed there."}],
+                },
+                {
+                    "id": "continue",
+                    "continuity": {"inherit_motion": True,
+                                   "inherit_action": True},
+                    "shot": {"action": "Mara grips the focusing wheel."},
+                },
+            ],
+        }
+
     def write_manifest(self, data=None):
         path = os.path.join(self.input, "film.yaml")
         with open(path, "w", encoding="utf-8") as handle:
@@ -104,6 +156,71 @@ class BatchTests(unittest.TestCase):
         self.assertEqual([c["context"] for c in got["clips"]],
                          ["none", "previous", "opening"])
         self.assertEqual(got["clips"][1]["duration_seconds"], 8)
+
+    def test_structured_manifest_compiles_h3_sections(self):
+        got = self.batch.parse_manifest(json.dumps(self.structured_manifest()))
+        first = got["clips"][0]
+        prompt = first["prompt"]
+        self.assertIn("integrated_multimodal_description: [Shot 1]", prompt)
+        self.assertIn("Live-action cinematic, subtle film grain.", prompt)
+        self.assertIn("Mara returns during one stormy night.", prompt)
+        self.assertIn("Mara Venn (S1) is a woman with hazel eyes", prompt)
+        self.assertIn("wearing a navy wool coat", prompt)
+        self.assertIn("Mara Venn (S1) says quietly: "
+                      "<d>[English] You kept it pointed there.</d>", prompt)
+        self.assertIn("The camera pushes in with small amplitude at slow speed.",
+                      prompt)
+        self.assertIn("overall_soundscape: Rain taps the glass.", prompt)
+        self.assertIn("non_diegetic_music: Sparse piano", prompt)
+        self.assertEqual(first["negative_prompt"], "subtitles, watermark")
+
+        second = got["clips"][1]["prompt"]
+        self.assertIn("continues seamlessly from the inherited", second)
+        self.assertIn("Preserve the inherited camera motion and subject action",
+                      second)
+
+    def test_structured_multishot_timestamps_are_validated(self):
+        data = self.structured_manifest()
+        data["clips"][0].pop("shot")
+        data["clips"][0].pop("dialogue")
+        data["clips"][0]["shots"] = [
+            {"action": "Mara enters."},
+            {"at": 3.5, "action": "The view cuts closer.",
+             "dialogue": [{"speaker": "mara", "text": "There."}]},
+        ]
+        prompt = self.batch.parse_manifest(json.dumps(data))["clips"][0]["prompt"]
+        self.assertIn("[Shot 2] At 00:03.500, the camera cuts to", prompt)
+
+        data["clips"][0]["shots"][1]["at"] = 8
+        with self.assertRaisesRegex(ValueError, "before the 8.000s clip end"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_structured_unknown_character_is_refused(self):
+        data = self.structured_manifest()
+        data["clips"][0]["cast"] = ["nobody"]
+        with self.assertRaisesRegex(ValueError, "unknown character"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_structured_duplicate_speaker_id_is_refused(self):
+        data = self.structured_manifest()
+        data["characters"]["elias"] = {
+            "name": "Elias", "speaker_id": "S1",
+        }
+        with self.assertRaisesRegex(ValueError, "both use S1"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_structured_dialogue_speaker_must_be_in_cast(self):
+        data = self.structured_manifest()
+        data["clips"][0]["cast"] = []
+        with self.assertRaisesRegex(ValueError, "not in this shot's cast"):
+            self.batch.parse_manifest(json.dumps(data))
+
+    def test_structured_raw_prompt_escape_hatch(self):
+        data = self.structured_manifest()
+        data["clips"] = [{"id": "raw", "context": "none",
+                          "raw_prompt": "exact H3 prompt"}]
+        got = self.batch.parse_manifest(json.dumps(data))
+        self.assertEqual(got["clips"][0]["prompt"], "exact H3 prompt")
 
     def test_forward_context_is_refused(self):
         data = self.manifest()
