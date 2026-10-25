@@ -515,30 +515,46 @@ def regenerate_batch(manifest_yaml, batch_id, base_folder,
         manifest_indexes = {clip["id"]: index
                             for index, clip in enumerate(manifest["clips"])}
         completed = list(state.get("completed", []))
-        kept = [one for one in completed
-                if str(one.get("id")) not in selected_set]
-        # Reusing a batch id with revised YAML is safe for retained takes only
-        # while their identity and position still match. A structural rewrite
-        # needs a whole-movie regeneration (or a new batch id).
-        for one in kept:
-            clip_id = str(one.get("id"))
-            if (clip_id not in manifest_indexes
-                    or int(one.get("index", -1)) != manifest_indexes[clip_id]):
-                raise ValueError(
-                    "H3 batch: the revised manifest moved or removed completed "
-                    "clip %r. Regenerate the whole movie or use a new batch_id."
-                    % clip_id)
-
-        replacements = dict(state.get("replacements") or {})
+        manifest_ids = set(manifest_indexes)
+        replacements = {
+            str(key): str(value) for key, value in
+            (state.get("replacements") or {}).items()
+            if str(key) in manifest_ids
+        }
+        # Prefer an existing completion with the same id. Only treat an old
+        # id at the same index as a rename when no direct completion exists;
+        # this distinguishes a rename from clips merely shifting after one was
+        # removed.
+        direct_selected = {
+            str(one.get("id")) for one in completed
+            if str(one.get("id")) in selected_set
+        }
+        kept = []
         removed = []
+        retired = []
         for one in completed:
             clip_id = str(one.get("id"))
-            if clip_id not in selected_set:
+            old_index = int(one.get("index", -1))
+            target_id = clip_id if clip_id in selected_set else None
+            if target_id is None and 0 <= old_index < len(manifest["clips"]):
+                candidate = manifest["clips"][old_index]["id"]
+                if candidate in selected_set and candidate not in direct_selected:
+                    target_id = candidate
+            if target_id is None and clip_id in manifest_indexes:
+                retained = dict(one)
+                retained["index"] = manifest_indexes[clip_id]
+                kept.append(retained)
                 continue
             old_path = str(one.get("path") or "")
+            if target_id is None:
+                retired.append({"id": clip_id, "path": old_path})
+                continue
             if old_path:
-                replacements[clip_id] = old_path
-            removed.append({"id": clip_id, "path": old_path})
+                replacements[target_id] = old_path
+            reopened = {"id": target_id, "path": old_path}
+            if target_id != clip_id:
+                reopened["previous_id"] = clip_id
+            removed.append(reopened)
 
         completed_map = {str(one["id"]): str(one["path"]) for one in kept}
         _validate_selection_dependencies(manifest, selected, completed_map)
@@ -557,6 +573,7 @@ def regenerate_batch(manifest_yaml, batch_id, base_folder,
             "selected": selected,
             "reopened": len(removed),
             "replacements": removed,
+            "retired": retired,
         }
 
 

@@ -485,6 +485,58 @@ class BatchTests(unittest.TestCase):
                 manifest_yaml, "regen-active", "movie",
                 json.dumps(["opening"]))
 
+    def test_regeneration_reconciles_renamed_and_removed_clips(self):
+        manifest = self.manifest()
+        manifest_yaml = json.dumps(manifest)
+        planner = self.batch.H3BatchPlan()
+        commit = self.batch.H3BatchCommit()
+        old_paths = {}
+        for name in ("opening", "middle", "callback"):
+            planned = planner.plan(manifest_yaml, "regen-rename", "movie", 0)
+            old_paths[name] = "movie/%s_00001.mp4" % name
+            commit.commit(self.saved_take(old_paths[name]), planned[8],
+                          auto_export=False)
+
+        manifest["clips"][1]["id"] = "renamed_middle"
+        manifest["clips"].pop()  # callback no longer exists in the screenplay
+        changed_yaml = json.dumps(manifest)
+        reopened = self.batch.regenerate_batch(
+            changed_yaml, "regen-rename", "movie",
+            json.dumps(["renamed_middle"]))
+        self.assertEqual(reopened["replacements"], [{
+            "id": "renamed_middle", "path": old_paths["middle"],
+            "previous_id": "middle",
+        }])
+        self.assertEqual(reopened["retired"], [{
+            "id": "callback", "path": old_paths["callback"],
+        }])
+
+        planned = planner.plan(
+            changed_yaml, "regen-rename", "movie", 0,
+            json.dumps(["renamed_middle"]))
+        ticket = json.loads(planned[8])
+        self.assertEqual(ticket["replace_path"], old_paths["middle"])
+
+    def test_whole_movie_regeneration_can_drop_removed_checkpoint_ids(self):
+        manifest = self.manifest()
+        manifest_yaml = json.dumps(manifest)
+        planner = self.batch.H3BatchPlan()
+        commit = self.batch.H3BatchCommit()
+        for name in ("opening", "middle", "callback"):
+            planned = planner.plan(manifest_yaml, "regen-drop", "movie", 0)
+            commit.commit(self.saved_take(
+                "movie/%s_drop_00001.mp4" % name), planned[8],
+                auto_export=False)
+
+        manifest["clips"].pop(1)
+        manifest["clips"][1]["context"] = "opening"
+        changed_yaml = json.dumps(manifest)
+        reopened = self.batch.regenerate_batch(
+            changed_yaml, "regen-drop", "movie",
+            json.dumps(["opening", "callback"]))
+        self.assertEqual(reopened["remaining"], 2)
+        self.assertEqual([one["id"] for one in reopened["retired"]], ["middle"])
+
     def test_pasted_yaml_widget_is_multiline_and_required(self):
         inputs = self.batch.H3BatchPlan.INPUT_TYPES()
         config = inputs["required"]["manifest_yaml"][1]

@@ -27,7 +27,10 @@ accepted intentionally and new takes are queued. When each replacement
 finishes, Timeline swaps it into every position occupied by the previous take
 while preserving cuts and seam settings. Previous MP4 and sidecar files remain
 on disk as recoverable takes; regeneration changes the active checkpoint and
-Timeline cut rather than deleting media.
+Timeline cut rather than deleting media. Renaming a selected clip keeps the
+same-position take as its replacement target. Moved clips have their checkpoint
+positions reconciled, and removed clip IDs are retired from the checkpoint, so
+a screenplay restructure cannot trap the batch behind stale state.
 
 The node is prefilled with a short castle smoke test. `castle_establishing`
 uses `context: none`; `ballroom_dance` starts a second independent root; and
