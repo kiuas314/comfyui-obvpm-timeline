@@ -4,7 +4,7 @@ import { api } from "../../scripts/api.js";
 const NODE = "H3BatchPlan";
 const ROOT_BLOCKS = ["project", "characters", "locations", "audio", "lora_library", "defaults"];
 const CLIP_FIELDS = [
-    ["context", "Context", "json", "'none', 'previous', an earlier clip id, or a context object"],
+    ["context", "Context", "context", "Start fresh, continue the previous clip, or branch from an earlier clip"],
     ["duration_seconds", "Duration (seconds)", "number", "Optional; otherwise defaults.duration_seconds or 8"],
     ["seed", "Seed", "number", "Optional fixed generation seed"],
     ["filename_prefix", "Filename prefix", "text", "Optional output filename stem"],
@@ -275,7 +275,23 @@ function buildEditor(node) {
         wrap.append(heading, el("p", "", help));
         let control;
         const value = clip[key];
-        if (kind === "long" || kind === "json") {
+        if (kind === "context") {
+            control = el("select");
+            const current = typeof value === "object" && value !== null
+                ? String(value.from ?? "previous") : String(value ?? "");
+            const choices = [
+                ["none", "None — start a new segment"],
+                ["previous", "Previous clip"],
+                ...(documentModel.clips ?? []).slice(0, selectedIndex)
+                    .map((one) => [String(one.id), `Earlier clip — ${one.id}`]),
+            ];
+            for (const [optionValue, optionLabel] of choices) {
+                const option = el("option", "", optionLabel);
+                option.value = optionValue;
+                option.selected = optionValue === current;
+                control.append(option);
+            }
+        } else if (kind === "long" || kind === "json") {
             control = el("textarea", kind === "long" ? "long" : "");
             control.value = kind === "json"
                 ? (value === undefined ? "" : JSON.stringify(value, null, 2))
@@ -286,14 +302,22 @@ function buildEditor(node) {
             if (kind === "number") control.step = "any";
             control.value = value ?? "";
         }
-        control.addEventListener("input", () => {
+        const update = () => {
             if (kind === "number") clip[key] = Number(control.value);
             else if (kind === "json") clip[key] = parseFlexible(control.value);
+            else if (kind === "context" && typeof value === "object" && value !== null) {
+                clip[key] = { ...value, from: control.value };
+            }
             else clip[key] = control.value;
             control.classList.remove("h3be-jsonbad");
             scheduleSerialize();
-        });
+        };
+        control.addEventListener(kind === "context" ? "change" : "input", update);
         wrap.append(control);
+        if (kind === "context" && typeof value === "object" && value !== null) {
+            wrap.append(el("p", "h3be-note",
+                "Advanced window/mode/cut settings from YAML are preserved."));
+        }
         return wrap;
     }
 
