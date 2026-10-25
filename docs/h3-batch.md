@@ -62,6 +62,13 @@ particular clip:
 - `clips` holds context routing plus shot-specific action, cast, dialogue and
   overrides, including scene-specific content LoRAs.
 
+The **Story globals** tab has a structured character library editor. Create a
+stable character ID there, then edit its display name, Ref2V picture number,
+speaker ID, appearance, wardrobe, and voice without writing JSON. In each clip,
+enable **Cast** and use its dropdown to add characters from that library;
+selected characters can be removed individually. A character cannot be deleted
+from the library while story defaults or clips still reference it.
+
 Only characters named in a clip or shot's `cast` are written into that
 prompt. Their appearance, wardrobe and voice are repeated because every clip
 is a fresh text-conditioning run, even when its latent context continues a

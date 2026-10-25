@@ -11,7 +11,7 @@ const CLIP_FIELDS = [
     ["negative_prompt", "Negative prompt", "long", "Overrides the project negative prompt"],
     ["raw_prompt", "Raw H3 prompt", "long", "Bypasses structured prompt compilation"],
     ["prompt", "Legacy prompt", "long", "Required only for version 1 manifests"],
-    ["cast", "Cast", "json", "JSON array of character ids"],
+    ["cast", "Cast", "cast", "Characters appearing in this clip"],
     ["location", "Location", "json", "Location id or inline location object"],
     ["music", "Music", "json", "Preset id, inline description, false, or 'none'"],
     ["soundscape", "Soundscape", "json", "Inline ambience, false, or 'none'"],
@@ -103,6 +103,14 @@ function installStyle() {
       .h3be-fieldhead button{margin-left:auto;padding:1px 7px;border:0;background:transparent;color:#aab3bf;font-size:16px;line-height:1.2}
       .h3be-fieldhead button:hover{background:#3a2528;color:#ffb0aa}.h3be-addfield{grid-column:1/-1;display:flex;gap:7px;align-items:center;padding:4px 0 1px}
       .h3be-addfield select{flex:1}.h3be-addfield button{white-space:nowrap}.h3be-addfield .h3be-note{margin-left:4px}
+      .h3be-cast{display:flex;flex-direction:column;gap:6px}.h3be-castadd{display:flex;gap:7px}.h3be-castadd select{flex:1}
+      .h3be-chiprow{display:flex;gap:6px;align-items:center;padding:5px 7px;border-radius:4px;background:#191d23;border:1px solid #363e49}
+      .h3be-chiprow span{flex:1}.h3be-chiprow button{padding:1px 7px;border:0;background:transparent;color:#ffb0aa}
+      .h3be-characters{display:flex;flex-direction:column;gap:9px}.h3be-character{border:1px solid #3b4653;border-radius:7px;padding:10px;background:#252a32}
+      .h3be-characterhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.h3be-characterhead strong{font:650 14px ui-monospace,SFMono-Regular,monospace;color:#9fdcf2}
+      .h3be-charactergrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.h3be-charactergrid label{display:block;margin:0;color:#b9c2cd;font-size:11px;font-weight:600}
+      .h3be-charactergrid label.wide{grid-column:1/-1}.h3be-charactergrid input,.h3be-charactergrid textarea{margin-top:4px}.h3be-charactergrid textarea{min-height:72px}
+      .h3be-newcharacter{display:flex;gap:7px;align-items:center;margin-top:9px}.h3be-newcharacter input{flex:1}
       .h3be input[type=text],.h3be input[type=number],.h3be select,.h3be textarea{width:100%;background:#15181d;color:#f0f2f4;border:1px solid #414a57;border-radius:4px;padding:6px}
       .h3be textarea{resize:vertical;min-height:74px;font:12px/1.4 ui-monospace,SFMono-Regular,monospace}.h3be textarea.long{min-height:125px}
       .h3be h3{margin:0 0 9px;font-size:16px}.h3be h4{margin:14px 0 7px;color:#9fdcf2}.h3be-note{color:#9ca7b4;font-size:12px}
@@ -263,7 +271,7 @@ function buildEditor(node) {
     }
 
     function fieldControl(clip, key, label, kind, help) {
-        const wide = kind === "json" || kind === "long";
+        const wide = kind === "json" || kind === "long" || kind === "cast";
         const wrap = el("div", "h3be-field" + (wide ? " wide" : ""));
         const heading = el("div", "h3be-fieldhead");
         heading.append(document.createTextNode(label),
@@ -275,7 +283,47 @@ function buildEditor(node) {
         wrap.append(heading, el("p", "", help));
         let control;
         const value = clip[key];
-        if (kind === "context") {
+        if (kind === "cast") {
+            control = el("div", "h3be-cast");
+            const selected = Array.isArray(value) ? value : [];
+            for (const characterId of selected) {
+                const row = el("div", "h3be-chiprow");
+                const character = documentModel.characters?.[characterId];
+                row.append(el("span", "", character?.name
+                    ? `${character.name} (${characterId})` : characterId));
+                row.append(button("×", `Remove ${characterId} from this clip`, () => {
+                    clip[key] = selected.filter((one) => one !== characterId);
+                    renderClipPane();
+                    scheduleSerialize();
+                }, "danger"));
+                control.append(row);
+            }
+            const available = Object.entries(documentModel.characters ?? {})
+                .filter(([characterId]) => !selected.includes(characterId));
+            const addRow = el("div", "h3be-castadd");
+            const select = el("select");
+            const placeholder = el("option", "", available.length
+                ? "Add character…" : "All characters selected");
+            placeholder.value = "";
+            select.append(placeholder);
+            for (const [characterId, character] of available) {
+                const option = el("option", "",
+                    character?.name ? `${character.name} (${characterId})` : characterId);
+                option.value = characterId;
+                select.append(option);
+            }
+            const add = button("add", "Add the selected character to this clip", () => {
+                if (!select.value) return;
+                clip[key] = [...selected, select.value];
+                renderClipPane();
+                scheduleSerialize();
+            });
+            add.disabled = true;
+            select.disabled = !available.length;
+            select.addEventListener("change", () => { add.disabled = !select.value; });
+            addRow.append(select, add);
+            control.append(addRow);
+        } else if (kind === "context") {
             control = el("select");
             const current = typeof value === "object" && value !== null
                 ? String(value.from ?? "previous") : String(value ?? "");
@@ -312,13 +360,118 @@ function buildEditor(node) {
             control.classList.remove("h3be-jsonbad");
             scheduleSerialize();
         };
-        control.addEventListener(kind === "context" ? "change" : "input", update);
+        if (kind !== "cast") {
+            control.addEventListener(kind === "context" ? "change" : "input", update);
+        }
         wrap.append(control);
         if (kind === "context" && typeof value === "object" && value !== null) {
             wrap.append(el("p", "h3be-note",
                 "Advanced window/mode/cut settings from YAML are preserved."));
         }
         return wrap;
+    }
+
+    function characterField(character, key, label, options = {}) {
+        const wrap = el("label", options.wide ? "wide" : "", label);
+        const control = options.long ? el("textarea") : el("input");
+        if (!options.long) control.type = options.number ? "number" : "text";
+        if (options.number) {
+            control.min = "1";
+            control.max = "9";
+            control.step = "1";
+        }
+        control.value = character[key] ?? "";
+        control.placeholder = options.placeholder ?? "";
+        control.addEventListener("input", () => {
+            if (!control.value.trim()) delete character[key];
+            else character[key] = options.number
+                ? Number(control.value) : control.value;
+            scheduleSerialize();
+        });
+        wrap.append(control);
+        return wrap;
+    }
+
+    function characterIsUsed(characterId) {
+        const usedBy = [];
+        for (const clip of documentModel.clips ?? []) {
+            const serialized = JSON.stringify(clip);
+            if ((Array.isArray(clip.cast) && clip.cast.includes(characterId))
+                    || serialized.includes(`\"${characterId}\"`)) {
+                usedBy.push(clip.id || "unnamed clip");
+            }
+        }
+        if (Array.isArray(documentModel.defaults?.cast)
+                && documentModel.defaults.cast.includes(characterId)) {
+            usedBy.unshift("story defaults");
+        }
+        return [...new Set(usedBy)];
+    }
+
+    function renderCharacterEditor(pane) {
+        documentModel.characters ??= {};
+        const section = el("div", "h3be-global");
+        section.append(el("h4", "", "Characters"), el("div", "h3be-note",
+            "Create reusable characters here, then add them to each clip from its Cast dropdown."));
+        const list = el("div", "h3be-characters");
+        for (const [characterId, characterValue] of Object.entries(documentModel.characters)) {
+            const character = characterValue && typeof characterValue === "object"
+                ? characterValue : (documentModel.characters[characterId] = {});
+            const card = el("div", "h3be-character");
+            const head = el("div", "h3be-characterhead");
+            head.append(el("strong", "", characterId), el("span", "h3be-spacer"));
+            head.append(button("delete", `Delete character ${characterId}`, () => {
+                const usedBy = characterIsUsed(characterId);
+                if (usedBy.length) {
+                    setStatus(`${characterId} is still used by ${usedBy.join(", ")}`, true);
+                    return;
+                }
+                if (!window.confirm(`Delete character ${characterId}?`)) return;
+                delete documentModel.characters[characterId];
+                renderMain();
+                scheduleSerialize();
+            }, "danger"));
+            const grid = el("div", "h3be-charactergrid");
+            grid.append(
+                characterField(character, "name", "Display name", { placeholder: "Princess Elara" }),
+                characterField(character, "speaker_id", "Speaker ID", { placeholder: "S1" }),
+                characterField(character, "reference_image", "Reference picture", { number: true, placeholder: "1–9" }),
+                characterField(character, "appearance", "Appearance", { long: true, wide: true }),
+                characterField(character, "wardrobe", "Wardrobe", { long: true, wide: true }),
+                characterField(character, "voice", "Voice", { long: true, wide: true }));
+            card.append(head, grid);
+            list.append(card);
+        }
+        if (!Object.keys(documentModel.characters).length) {
+            list.append(el("div", "h3be-note", "No characters yet."));
+        }
+        const create = el("div", "h3be-newcharacter");
+        const id = el("input");
+        id.type = "text";
+        id.placeholder = "new character id, e.g. princess";
+        const add = button("create character", "Create a new character definition", () => {
+            const characterId = id.value.trim();
+            if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(characterId)) {
+                setStatus("Character id must use letters, numbers, '.', '_' or '-'", true);
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(documentModel.characters, characterId)) {
+                setStatus(`Character ${characterId} already exists`, true);
+                return;
+            }
+            documentModel.characters[characterId] = {
+                name: characterId.replace(/[_-]+/g, " ").replace(/\b\w/g,
+                    (letter) => letter.toUpperCase()),
+            };
+            renderMain();
+            scheduleSerialize();
+        }, "primary");
+        id.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") { event.preventDefault(); add.click(); }
+        });
+        create.append(id, add);
+        section.append(list, create);
+        pane.append(section);
     }
 
     function cloneValue(value) {
@@ -410,6 +563,10 @@ function buildEditor(node) {
         versionWrap.append(version);
         pane.append(versionWrap);
         for (const key of ROOT_BLOCKS) {
+            if (key === "characters") {
+                renderCharacterEditor(pane);
+                continue;
+            }
             const wrap = el("div", "h3be-field h3be-global");
             const heading = el("label");
             const enabled = el("input");
