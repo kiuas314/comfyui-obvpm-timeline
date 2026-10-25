@@ -267,9 +267,10 @@ count again.
 Manifest version 2 can define project-wide visual continuity, a reusable
 character bible with stable speaker IDs, locations, soundscapes, named music,
 camera direction, dialogue and timed internal shots. H3 Batch Plan compiles
-those fields into H3's optional `subject_definitions`,
-`integrated_multimodal_description`,
-`overall_soundscape` and `non_diegetic_music` prompt layout. See the
+those fields into `subject_definitions`, `summary`, `retention_analysis`,
+`detailed_description`, `overall_soundscape`, and `Non_diegetic_music`.
+Reference-bound characters take their identity from their Picture rather than
+having a competing textual appearance repeated into every shot. See the
 [batch authoring guide](docs/h3-batch.md). Version 1 raw-prompt manifests stay
 compatible, and version 2 also offers `raw_prompt` as a per-clip escape hatch.
 

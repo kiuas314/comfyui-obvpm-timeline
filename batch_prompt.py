@@ -330,7 +330,7 @@ def _music(value, audio):
 
 
 def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
-    """Compile one normalized v2 clip into H3's three base prompt fields."""
+    """Compile one normalized v2 clip into the structured H3 prompt fields."""
     raw = clip.get("raw_prompt", clip.get("prompt"))
     if raw is not None:
         if not isinstance(raw, str) or not raw.strip():
@@ -372,6 +372,8 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                          "dialogue inside each shot." % clip_id)
 
     paragraphs = []
+    summary_actions = []
+    retention = []
     previous_time = 0.0
     defined = set()
     for index, value in enumerate(shots):
@@ -397,14 +399,10 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
             style = globals_["project"].get("visual_style")
             if style:
                 pieces.append(style)
-            story = globals_["project"].get("story_context")
-            if story:
-                pieces.append(story)
-            if context == "none":
-                pieces.append("The scene opens as a new root shot.")
-            else:
-                pieces.append("The shot continues seamlessly from the "
-                              "inherited visual and audio context.")
+            if context != "none":
+                retention.append(
+                    "Retain visual, motion, lighting, wardrobe, and audio "
+                    "continuity from the inherited clip context.")
             continuity = clip.get("continuity",
                                   globals_["project"].get("continuity"))
             if isinstance(continuity, dict):
@@ -417,24 +415,30 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                 if continuity.get("inherit_action"):
                     notes.append("subject action")
                 if notes and context != "none":
-                    pieces.append("Preserve the inherited %s without a reset."
-                                  % " and ".join(notes))
+                    retention.append(
+                        "Preserve inherited %s without a reset."
+                        % " and ".join(notes))
                 if _clean(continuity.get("notes")):
-                    pieces.append(_clean(continuity["notes"]))
+                    retention.append(_clean(continuity["notes"]))
             elif _clean(continuity):
-                pieces.append(_clean(continuity))
+                retention.append(_clean(continuity))
             if location["description"]:
                 pieces.append(location["description"])
 
         for char_id in shot_cast:
             if char_id not in defined:
-                pieces.append(_character_definition(
-                    _character(char_id, globals_, overrides)))
+                character = _character(char_id, globals_, overrides)
+                # A textual face/body description competes with Ref2V. Its
+                # Picture binding is the identity source; prose is reserved
+                # for characters that do not have a reference image.
+                if not character.get("reference_image"):
+                    pieces.append(_character_definition(character))
                 defined.add(char_id)
         framing = _clean(shot.get("framing"))
         action = _clean(shot.get("action"))
         if not action:
             raise ValueError("H3 batch: %s needs an action." % where)
+        summary_actions.append(action)
         if framing:
             pieces.append("A %s frames the action." % framing)
         pieces.append(action)
@@ -464,6 +468,7 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                       "described scene.")
     music = _music(clip.get("music", defaults.get("music")), globals_["audio"])
     subjects = []
+    reference_retention = []
     for char_id in sorted(
             defined,
             key=lambda one: (globals_["characters"][one].get(
@@ -473,11 +478,23 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
         if picture:
             subjects.append("<Subject %d> is %s depicted in <Picture %d>."
                             % (picture, char["name"], picture))
-    subject_block = ""
-    if subjects:
-        subject_block = "subject_definitions:\n%s\n\n" % "\n".join(subjects)
+            reference_retention.append(
+                "Retain <Subject %d> identity and visual characteristics "
+                "from <Picture %d>; do not replace them with a textual "
+                "appearance." % (picture, picture))
+    subject_text = "\n".join(subjects) if subjects else "N/A"
+    summary = summary_actions[0] if summary_actions else "N/A"
+    story = globals_["project"].get("story_context")
+    if story:
+        summary = "%s %s" % (story, summary)
+    retention = reference_retention + retention
+    retention_text = "\n".join(retention) if retention else "N/A"
 
-    return ("%sintegrated_multimodal_description: %s\n\n"
-            "overall_soundscape: %s\n\n"
-            "non_diegetic_music: %s"
-            % (subject_block, "\n\n".join(paragraphs), soundscape, music))
+    return ("subject_definitions:\n%s\n\n"
+            "summary:\n%s\n\n"
+            "retention_analysis:\n%s\n\n"
+            "detailed_description:\n%s\n\n"
+            "overall_soundscape:\n%s\n\n"
+            "Non_diegetic_music:\n%s"
+            % (subject_text, summary, retention_text,
+               "\n\n".join(paragraphs), soundscape, music))

@@ -222,19 +222,32 @@ Supported movements are `static`, `push_in`, `pull_out`, `zoom_in`,
 
 ## Compiled output
 
-Every structured clip contains the three core sections below. Clips with
-reference-bound cast also begin with `subject_definitions`:
+Every structured clip contains these sections:
 
 ```text
 subject_definitions:
 <Subject 1> is a character depicted in <Picture 1>.
 
-integrated_multimodal_description: [Shot 1] ...
+summary:
+The concise action of this clip.
 
-overall_soundscape: ...
+retention_analysis:
+Retain <Subject 1> identity and visual characteristics from <Picture 1>.
 
-non_diegetic_music: ...
+detailed_description:
+[Shot 1] ...
+
+overall_soundscape:
+...
+
+Non_diegetic_music:
+...
 ```
+
+For a reference-bound character, `subject_definitions` and
+`retention_analysis` establish the Picture as the identity source. The compiler
+does not repeat that character's textual face/body description in
+`detailed_description`, avoiding competition with Ref2V conditioning.
 
 The exact compiled prompt is visible in the story editor, emitted from
 `H3 Batch Plan`, and saved in the take's metadata. The YAML remains the

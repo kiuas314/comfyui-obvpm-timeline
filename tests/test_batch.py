@@ -164,7 +164,7 @@ class BatchTests(unittest.TestCase):
         got = self.batch.inspect_manifest(json.dumps(data))
         self.assertEqual([segment["clips"] for segment in got["segments"]],
                          [["opening", "continue"], ["new_root"]])
-        self.assertIn("integrated_multimodal_description",
+        self.assertIn("detailed_description:",
                       got["clips"][0]["compiled_prompt"])
         self.assertEqual(got["document"]["project"]["language"], "English")
 
@@ -180,22 +180,26 @@ class BatchTests(unittest.TestCase):
         got = self.batch.parse_manifest(json.dumps(self.structured_manifest()))
         first = got["clips"][0]
         prompt = first["prompt"]
-        self.assertIn("integrated_multimodal_description: [Shot 1]", prompt)
+        self.assertIn("subject_definitions:\nN/A", prompt)
+        self.assertIn("summary:\nMara returns during one stormy night. "
+                      "Mara crosses toward the telescope.", prompt)
+        self.assertIn("retention_analysis:", prompt)
+        self.assertIn("detailed_description:\n[Shot 1]", prompt)
         self.assertIn("Live-action cinematic, subtle film grain.", prompt)
-        self.assertIn("Mara returns during one stormy night.", prompt)
         self.assertIn("Mara Venn (S1) is a woman with hazel eyes", prompt)
         self.assertIn("wearing a navy wool coat", prompt)
         self.assertIn("Mara Venn (S1) says quietly: "
                       "<d>[English] You kept it pointed there.</d>", prompt)
         self.assertIn("The camera pushes in with small amplitude at slow speed.",
                       prompt)
-        self.assertIn("overall_soundscape: Rain taps the glass.", prompt)
-        self.assertIn("non_diegetic_music: Sparse piano", prompt)
+        self.assertIn("overall_soundscape:\nRain taps the glass.", prompt)
+        self.assertIn("Non_diegetic_music:\nSparse piano", prompt)
         self.assertEqual(first["negative_prompt"], "subtitles, watermark")
 
         second = got["clips"][1]["prompt"]
-        self.assertIn("continues seamlessly from the inherited", second)
-        self.assertIn("Preserve the inherited camera motion and subject action",
+        self.assertIn("Retain visual, motion, lighting, wardrobe, and audio "
+                      "continuity from the inherited clip context", second)
+        self.assertIn("Preserve inherited camera motion and subject action",
                       second)
 
     def test_scene_content_loras_inherit_override_and_disable(self):
@@ -296,7 +300,9 @@ class BatchTests(unittest.TestCase):
         prompt = parsed["clips"][0]["prompt"]
         self.assertIn("subject_definitions:\n<Subject 1> is Mara Venn "
                       "depicted in <Picture 1>.", prompt)
-        self.assertIn("<Subject 1> (Mara Venn) (S1) is", prompt)
+        self.assertIn("Retain <Subject 1> identity and visual characteristics "
+                      "from <Picture 1>", prompt)
+        self.assertNotIn("a woman with hazel eyes and black hair", prompt)
 
     def test_duplicate_reference_image_is_refused(self):
         data = self.structured_manifest()
