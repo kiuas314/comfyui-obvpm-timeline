@@ -7,6 +7,7 @@ attach the transactional batch commit after the existing save node.
 """
 
 import json
+import copy
 from pathlib import Path
 import runpy
 
@@ -25,6 +26,7 @@ NOTE_ID = 1633
 SETTINGS_ID = 1634
 LORA_ID = 1635
 REFERENCE_SELECT_ID = 1636
+REFERENCE_NODE_IDS = tuple(range(1637, 1642))
 
 
 def node_by_id(workflow, node_id):
@@ -253,6 +255,23 @@ def reference_select_node():
     }
 
 
+def extra_reference_nodes(workflow):
+    template = node_by_id(workflow, 1280)
+    nodes = []
+    for index, node_id in enumerate(REFERENCE_NODE_IDS, start=5):
+        node = copy.deepcopy(template)
+        node["id"] = node_id
+        node["pos"] = [770 + (index - 5) * 510, 3860]
+        node["order"] = 32 + index - 5
+        node["title"] = "Picture %d - Load Images & Compose (obvpm)" % index
+        for output in node.get("outputs", []):
+            output["links"] = None
+        for input_port in node.get("inputs", []):
+            input_port["link"] = None
+        nodes.append(node)
+    return nodes
+
+
 def note_node():
     return {
         "id": NOTE_ID,
@@ -300,7 +319,7 @@ def note_node():
 def build():
     workflow = json.loads(SOURCE.read_text(encoding="utf-8"))
     if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID, LORA_ID,
-                           REFERENCE_SELECT_ID}
+                           REFERENCE_SELECT_ID, *REFERENCE_NODE_IDS}
            for node in workflow["nodes"]):
         raise RuntimeError("Batch node ids already exist in the source")
 
@@ -333,6 +352,7 @@ def build():
     workflow["nodes"].extend(
         [settings_node(), plan_node(), lora_node(), reference_select_node(),
          commit_node(), note_node()])
+    workflow["nodes"].extend(extra_reference_nodes(workflow))
 
     # Reused link ids were redirected before the new planner existed, so add
     # those three output-side references now. Newly created links are handled
@@ -391,6 +411,12 @@ def build():
     add_link(workflow, 3049, 1282, 0, REFERENCE_SELECT_ID, 2, "IMAGE")
     add_link(workflow, 3050, 1283, 0, REFERENCE_SELECT_ID, 3, "IMAGE")
     add_link(workflow, 3051, 1284, 0, REFERENCE_SELECT_ID, 4, "IMAGE")
+    for offset, node_id in enumerate(REFERENCE_NODE_IDS):
+        add_link(workflow, 3052 + offset, node_id, 0,
+                 REFERENCE_SELECT_ID, 5 + offset, "IMAGE")
+    for offset in range(5):
+        add_link(workflow, 3057 + offset, REFERENCE_SELECT_ID, 4 + offset,
+                 797, 7 + offset, "IMAGE")
 
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
@@ -402,8 +428,8 @@ def build():
         "color": "#3f789e",
         "flags": {},
     })
-    workflow["last_node_id"] = REFERENCE_SELECT_ID
-    workflow["last_link_id"] = 3051
+    workflow["last_node_id"] = REFERENCE_NODE_IDS[-1]
+    workflow["last_link_id"] = 3061
     workflow["id"] = "f5ebfa5b-a853-4f6e-bb64-a02b9517d53c"
     workflow["extra"]["ds"] = {
         "scale": 0.53,
