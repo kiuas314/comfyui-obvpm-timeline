@@ -13,7 +13,7 @@ one pack, so saved workflows keep loading.
 
 from .nodes_assemble import H3Assemble, H3Timeline
 from .nodes_batch import (H3BatchCommit, H3BatchLoraApply, H3BatchPlan,
-                          H3BatchSettings)
+                          H3BatchReferenceSelect, H3BatchSettings)
 from .nodes_budget import H3VramHeadroom
 from .nodes_encode import H3MCtxFromFrames
 from .nodes_live import H3LivePreview
@@ -70,6 +70,7 @@ NODE_CLASS_MAPPINGS = {
     "H3Timeline": H3Timeline,
     "H3BatchSettings": H3BatchSettings,
     "H3BatchLoraApply": H3BatchLoraApply,
+    "H3BatchReferenceSelect": H3BatchReferenceSelect,
     "H3BatchPlan": H3BatchPlan,
     "H3BatchCommit": H3BatchCommit,
     "H3ResultPreview": H3ResultPreview,
@@ -96,6 +97,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "H3Timeline": "H3 MCtx Timeline",
     "H3BatchSettings": "H3 Batch Settings",
     "H3BatchLoraApply": "H3 Scene Content LoRAs",
+    "H3BatchReferenceSelect": "H3 Batch Reference Select",
     "H3BatchPlan": "H3 Batch Plan",
     "H3BatchCommit": "H3 Batch Commit",
     "H3ResultPreview": "H3 MCtx Result Preview",

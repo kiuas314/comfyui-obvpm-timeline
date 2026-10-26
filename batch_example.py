@@ -46,6 +46,7 @@ characters:
 
 locations:
   castle_exterior:
+    reference_images: [3]
     description: >-
       A vast fairy-tale castle rises above snowy mountains at blue hour. Warm
       light glows from hundreds of windows beneath a bright full moon.

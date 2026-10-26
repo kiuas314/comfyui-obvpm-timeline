@@ -24,6 +24,7 @@ COMMIT_ID = 1632
 NOTE_ID = 1633
 SETTINGS_ID = 1634
 LORA_ID = 1635
+REFERENCE_SELECT_ID = 1636
 
 
 def node_by_id(workflow, node_id):
@@ -66,6 +67,7 @@ def plan_node():
         ("index", "INT"),
         ("total", "INT"),
         ("content_loras", "STRING"),
+        ("reference_images", "STRING"),
     ]
     inputs = []
     for name, input_type in (
@@ -222,6 +224,35 @@ def lora_node():
     }
 
 
+def reference_select_node():
+    inputs = [{
+        "localized_name": "reference_images", "name": "reference_images",
+        "type": "STRING", "link": 3047,
+    }]
+    for index in range(9):
+        inputs.append({
+            "localized_name": "image_%d" % index,
+            "name": "image_%d" % index,
+            "type": "IMAGE", "link": None,
+        })
+    outputs = [{
+        "localized_name": "ref_image_%d" % index,
+        "name": "ref_image_%d" % index,
+        "type": "IMAGE", "links": None,
+    } for index in range(9)]
+    return {
+        "id": REFERENCE_SELECT_ID,
+        "type": "H3BatchReferenceSelect",
+        "pos": [520, 4020],
+        "size": [360, 300],
+        "flags": {}, "order": 79, "mode": 0,
+        "inputs": inputs, "outputs": outputs,
+        "title": "Select Storyboard Reference Images",
+        "properties": {"Node name for S&R": "H3BatchReferenceSelect"},
+        "color": "#243342", "bgcolor": "#354b60",
+    }
+
+
 def note_node():
     return {
         "id": NOTE_ID,
@@ -268,7 +299,8 @@ def note_node():
 
 def build():
     workflow = json.loads(SOURCE.read_text(encoding="utf-8"))
-    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID, LORA_ID}
+    if any(node["id"] in {PLAN_ID, COMMIT_ID, NOTE_ID, SETTINGS_ID, LORA_ID,
+                           REFERENCE_SELECT_ID}
            for node in workflow["nodes"]):
         raise RuntimeError("Batch node ids already exist in the source")
 
@@ -291,10 +323,16 @@ def build():
     # LoRA Loader remains the project-wide baseline, and Timeline upscaling
     # continues to use the shared optimized model without a planner dependency.
     replace_link_origin(workflow, 2727, LORA_ID, 0, "MODEL")
+    # The four existing storyboard picture loaders feed the selector. The
+    # selector emits only the slots named by the active clip's location/cast.
+    for link_id, output_slot in zip((2314, 2315, 2316, 2317), range(4)):
+        replace_link_origin(workflow, link_id, REFERENCE_SELECT_ID,
+                            output_slot, "IMAGE")
 
     workflow["nodes"] = [node for node in workflow["nodes"] if node["id"] != 765]
     workflow["nodes"].extend(
-        [settings_node(), plan_node(), lora_node(), commit_node(), note_node()])
+        [settings_node(), plan_node(), lora_node(), reference_select_node(),
+         commit_node(), note_node()])
 
     # Reused link ids were redirected before the new planner existed, so add
     # those three output-side references now. Newly created links are handled
@@ -304,6 +342,12 @@ def build():
     planner["outputs"][3]["links"] = [3036]
     planner["outputs"][4]["links"] = [2722]
     planner["outputs"][11]["links"] = [3046]
+    planner["outputs"][12]["links"] = [3047]
+    reference_selector = node_by_id(workflow, REFERENCE_SELECT_ID)
+    reference_selector["outputs"][0]["links"] = [2314]
+    reference_selector["outputs"][1]["links"] = [2315]
+    reference_selector["outputs"][2]["links"] = [2316]
+    reference_selector["outputs"][3]["links"] = [2317]
     node_by_id(workflow, LORA_ID)["outputs"][0]["links"] = [2727]
     shared = node_by_id(workflow, SETTINGS_ID)
     shared["outputs"][0]["links"] = [2562, 2698]
@@ -342,6 +386,11 @@ def build():
     add_link(workflow, 3044, SETTINGS_ID, 0, PLAN_ID, 2, "STRING")
     add_link(workflow, 3045, 1489, 0, LORA_ID, 0, "MODEL")
     add_link(workflow, 3046, PLAN_ID, 11, LORA_ID, 1, "STRING")
+    add_link(workflow, 3047, PLAN_ID, 12, REFERENCE_SELECT_ID, 0, "STRING")
+    add_link(workflow, 3048, 1280, 0, REFERENCE_SELECT_ID, 1, "IMAGE")
+    add_link(workflow, 3049, 1282, 0, REFERENCE_SELECT_ID, 2, "IMAGE")
+    add_link(workflow, 3050, 1283, 0, REFERENCE_SELECT_ID, 3, "IMAGE")
+    add_link(workflow, 3051, 1284, 0, REFERENCE_SELECT_ID, 4, "IMAGE")
 
     ui_group = next(group for group in workflow["groups"] if group["id"] == 28)
     ui_group["title"] = "OBVPM H3 YAML Batch UI [restore]"
@@ -353,8 +402,8 @@ def build():
         "color": "#3f789e",
         "flags": {},
     })
-    workflow["last_node_id"] = LORA_ID
-    workflow["last_link_id"] = 3046
+    workflow["last_node_id"] = REFERENCE_SELECT_ID
+    workflow["last_link_id"] = 3051
     workflow["id"] = "f5ebfa5b-a853-4f6e-bb64-a02b9517d53c"
     workflow["extra"]["ds"] = {
         "scale": 0.53,

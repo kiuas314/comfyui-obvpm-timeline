@@ -242,6 +242,11 @@ def parse_manifest(text, source="manifest"):
                 merged.get("negative_prompt")
                 or globals_["project"].get("negative_prompt") or "")
 
+        reference_images = []
+        if version == 2:
+            reference_images = batch_prompt.reference_images_for_clip(
+                globals_, clip, defaults)
+
         out.append({
             "id": clip_id,
             "prompt": prompt,
@@ -255,6 +260,7 @@ def parse_manifest(text, source="manifest"):
             "filename_prefix": prefix,
             "metadata": dict(metadata or {}),
             "content_loras": content_loras,
+            "reference_images": reference_images,
         })
     result = {"version": version, "clips": out}
     if globals_ is not None:
@@ -711,16 +717,61 @@ class H3BatchLoraApply:
         return (model,)
 
 
+class H3BatchReferenceSelect:
+    CATEGORY = "obvpm/h3/batch"
+    FUNCTION = "select"
+    RETURN_TYPES = ("IMAGE",) * 9
+    RETURN_NAMES = tuple("ref_image_%d" % index for index in range(9))
+    DESCRIPTION = (
+        "Routes only the Picture slots declared by the active H3 batch clip. "
+        "Use location reference_images together with the matching image inputs."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "reference_images": ("STRING", {"forceInput": True}),
+        }, "optional": {
+            "image_%d" % index: ("IMAGE",)
+            for index in range(9)
+        }}
+
+    @classmethod
+    def IS_CHANGED(cls, **_):
+        return float("nan")
+
+    def select(self, reference_images, **images):
+        try:
+            active = json.loads(str(reference_images or "[]"))
+        except (TypeError, ValueError):
+            raise ValueError("H3 batch: invalid reference_images payload.")
+        if not isinstance(active, list):
+            raise ValueError("H3 batch: reference_images must be a JSON list.")
+        selected = set()
+        for picture in active:
+            try:
+                picture = int(picture)
+            except (TypeError, ValueError):
+                raise ValueError("H3 batch: reference_images must contain "
+                                 "Picture numbers 1-9.")
+            if not 1 <= picture <= 9:
+                raise ValueError("H3 batch: reference_images must contain "
+                                 "Picture numbers 1-9.")
+            selected.add(picture - 1)
+        return tuple(images.get("image_%d" % index) if index in selected else None
+                     for index in range(9))
+
+
 class H3BatchPlan:
     CATEGORY = "obvpm/h3/batch"
     FUNCTION = "plan"
     RETURN_TYPES = ("STRING", "STRING", "INT", "INT", wt.PINSPECS,
                     "STRING", "STRING", "STRING", "STRING", "INT", "INT",
-                    "STRING")
+                    "STRING", "STRING")
     RETURN_NAMES = ("prompt", "negative_prompt", "seed", "length",
                     "pin_specs", "base_folder", "filename_prefix",
                     "metadata", "ticket", "index", "total",
-                    "content_loras")
+                    "content_loras", "reference_images")
     DESCRIPTION = (
         "Visual YAML story editor and scoped planner. It reads the next "
         "unfinished clip in the selected clip, root segment, or whole movie. "
@@ -820,6 +871,7 @@ class H3BatchPlan:
         })
         if manifest["version"] == 2:
             metadata["prompt_format"] = "h3_base"
+        reference_images = clip.get("reference_images", [])
         ticket = json.dumps({
             "version": _STATE_VERSION,
             "batch_id": batch_id,
@@ -843,7 +895,8 @@ class H3BatchPlan:
                            ensure_ascii=False),
                 ticket, index + 1, len(manifest["clips"]),
                 json.dumps(clip["content_loras"], separators=(",", ":"),
-                           ensure_ascii=False))
+                           ensure_ascii=False),
+                json.dumps(reference_images, separators=(",", ":")))
 
 
 class H3BatchCommit:

@@ -57,7 +57,9 @@ particular clip:
   `speaker_id` (`S1`, `S2`, etc.) for the whole film. For Ref2V, assign
   `reference_image: 1` to the character shown in Picture 1,
   `reference_image: 2` for Picture 2, and so on.
-- `locations` holds reusable visual and ambient-sound descriptions.
+- `locations` holds reusable visual and ambient-sound descriptions plus optional
+  `reference_images` Picture slots. Those images are routed only when a clip
+  selects that location.
 - `audio` holds default or named non-diegetic music descriptions.
 - `lora_library` gives installed content LoRAs short, reusable names.
 - `defaults` holds generation/context settings and common cast, location,
@@ -71,6 +73,10 @@ speaker ID, appearance, wardrobe, and voice without writing JSON. In each clip,
 enable **Cast** and use its dropdown to add characters from that library;
 selected characters can be removed individually. A character cannot be deleted
 from the library while story defaults or clips still reference it.
+
+Locations have the same editor tab. Assign storyboard Picture numbers (for
+example `reference_images: [3]`) to a location; the batch workflow routes those
+images only for clips using that location.
 
 Only characters named in a clip's `cast` are written into that prompt.
 Reference-bound characters use their Picture as the identity source; characters

@@ -47,6 +47,7 @@ characters:
 
 locations:
   observatory_exterior:
+    reference_images: [3]
     description: >-
       An old stone observatory stands above a stormy sea at blue hour. Its
       open dome glows with warm tungsten light beneath fast-moving clouds.

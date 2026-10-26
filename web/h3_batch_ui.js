@@ -94,6 +94,7 @@ function installStyle() {
       .h3be-sidebar,.h3be-main{min-height:0;border:1px solid #343b46;border-radius:7px;background:#20242b;overflow:hidden}
       .h3be-sidebar{display:flex;flex-direction:column}.h3be-sidehead{padding:9px;border-bottom:1px solid #343b46;display:flex;gap:6px}
       .h3be-clips{overflow:auto;padding:7px;display:flex;flex-direction:column;gap:5px}.h3be-segment{font-size:11px;color:#7ec8e3;margin:8px 4px 2px}
+      .h3be-sideactions{padding:7px;border-top:1px solid #343b46;display:flex;flex-direction:column;gap:6px}.h3be-sideactions button{text-align:left}
       .h3be-clip{display:flex;gap:6px;align-items:center;text-align:left;width:100%;padding:8px}.h3be-clip.on{background:#2d6072;border-color:#55a6c4}
       .h3be-clip small{color:#aab3bf;margin-left:auto}.h3be-main{display:flex;flex-direction:column}
       .h3be-tabs{display:flex;gap:5px;padding:8px;border-bottom:1px solid #343b46}.h3be-tabs button.on{background:#2d6072;border-color:#55a6c4}
@@ -609,6 +610,99 @@ function buildEditor(node) {
         return wrap;
     }
 
+    function renderLocationEditor(pane) {
+        documentModel.locations ??= {};
+        const section = el("div", "h3be-global");
+        section.append(el("h4", "", "Locations"), el("div", "h3be-note",
+            "Create reusable locations here. Picture numbers are optional and select storyboard reference images only when a clip uses that location."));
+        const list = el("div", "h3be-characters");
+        for (const [locationId, locationValue] of Object.entries(documentModel.locations)) {
+            const location = locationValue && typeof locationValue === "object"
+                ? locationValue : (documentModel.locations[locationId] = {
+                    description: String(locationValue ?? ""),
+                });
+            const card = el("div", "h3be-character");
+            const head = el("div", "h3be-characterhead");
+            head.append(el("strong", "", locationId), el("span", "h3be-spacer"));
+            head.append(button("delete", `Delete location ${locationId}`, () => {
+                if ((documentModel.clips ?? []).some((clip) => clip.location === locationId)
+                        || documentModel.defaults?.location === locationId) {
+                    setStatus(`${locationId} is still used by a clip or story defaults`, true);
+                    return;
+                }
+                if (!window.confirm(`Delete location ${locationId}?`)) return;
+                delete documentModel.locations[locationId];
+                renderMain();
+                scheduleSerialize();
+            }, "danger"));
+            const grid = el("div", "h3be-charactergrid");
+            const description = el("textarea");
+            description.value = location.description ?? "";
+            description.placeholder = "Visual description of this location";
+            description.addEventListener("input", () => {
+                location.description = description.value;
+                scheduleSerialize();
+            });
+            const soundscape = el("textarea");
+            soundscape.value = location.soundscape ?? "";
+            soundscape.placeholder = "Optional location soundscape";
+            soundscape.addEventListener("input", () => {
+                location.soundscape = soundscape.value;
+                scheduleSerialize();
+            });
+            const references = el("input");
+            references.type = "text";
+            references.value = Array.isArray(location.reference_images)
+                ? location.reference_images.join(", ") : "";
+            references.placeholder = "Picture numbers, e.g. 3";
+            references.title = "1–9 slots matching the storyboard Picture inputs";
+            references.addEventListener("input", () => {
+                const values = references.value.split(",").map((one) => one.trim())
+                    .filter(Boolean).map(Number).filter((one) => one >= 1 && one <= 9);
+                location.reference_images = [...new Set(values)];
+                scheduleSerialize();
+            });
+            const descriptionLabel = el("label", "wide", "Visual description");
+            descriptionLabel.append(description);
+            const soundscapeLabel = el("label", "wide", "Soundscape");
+            soundscapeLabel.append(soundscape);
+            const referencesLabel = el("label", "", "Reference Pictures");
+            referencesLabel.append(references);
+            grid.append(descriptionLabel, soundscapeLabel, referencesLabel);
+            card.append(head, grid);
+            list.append(card);
+        }
+        if (!Object.keys(documentModel.locations).length) {
+            list.append(el("div", "h3be-note", "No locations yet."));
+        }
+        const create = el("div", "h3be-newcharacter");
+        const id = el("input");
+        id.type = "text";
+        id.placeholder = "new location id, e.g. castle_exterior";
+        const add = button("create location", "Create a reusable location", () => {
+            const locationId = id.value.trim();
+            if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(locationId)) {
+                setStatus("Location id must use letters, numbers, '.', '_' or '-'", true);
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(documentModel.locations, locationId)) {
+                setStatus(`Location ${locationId} already exists`, true);
+                return;
+            }
+            documentModel.locations[locationId] = {
+                description: "", soundscape: "", reference_images: [],
+            };
+            renderMain();
+            scheduleSerialize();
+        }, "primary");
+        id.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") { event.preventDefault(); add.click(); }
+        });
+        create.append(id, add);
+        section.append(list, create);
+        pane.append(section);
+    }
+
     function renderGlobals(pane) {
         pane.append(el("h3", "", "Story globals and reusable libraries"));
         pane.append(el("div", "h3be-note",
@@ -631,6 +725,10 @@ function buildEditor(node) {
         for (const key of ROOT_BLOCKS) {
             if (key === "characters") {
                 renderCharacterEditor(pane);
+                continue;
+            }
+            if (key === "locations") {
+                renderLocationEditor(pane);
                 continue;
             }
             const wrap = el("div", "h3be-field h3be-global");
@@ -794,9 +892,55 @@ function buildEditor(node) {
                             try { await flush(); render(); }
                             catch (error) { setStatus(error.message || String(error), true); }
                         }));
-        sidebar.append(sideHead, el("div", "h3be-clips"));
+        const clipList = el("div", "h3be-clips");
+        const clipActions = el("div", "h3be-sideactions");
+        clipActions.append(
+            button("+ continuation clip", "Insert a clip after the selected clip, inheriting its context, location, and cast", () => addContinuationClip(), "primary"),
+            button("+ route clip", "Insert a new root clip with no inherited context", () => addRouteClip()));
+        sidebar.append(sideHead, clipList, clipActions);
         renderSidebar();
         renderMain();
+    }
+
+    function uniqueClipId(base) {
+        const used = new Set((documentModel.clips ?? []).map((clip) => String(clip.id || "")));
+        let id = base;
+        let suffix = 2;
+        while (used.has(id)) id = `${base}_${suffix++}`;
+        return id;
+    }
+
+    function insertClip(clip) {
+        documentModel.clips ??= [];
+        const at = Math.min(selectedIndex + 1, documentModel.clips.length);
+        documentModel.clips.splice(at, 0, clip);
+        selectedIndex = at;
+        tab = "clip";
+        serialize(true).catch((error) => setStatus(error.message || String(error), true));
+    }
+
+    function addContinuationClip() {
+        const source = selectedClip();
+        const clip = freshClip((documentModel.clips ?? []).length);
+        clip.id = uniqueClipId(`${source?.id || "clip"}_continuation`);
+        clip.context = "previous";
+        if (source?.location) clip.location = JSON.parse(JSON.stringify(source.location));
+        if (Array.isArray(source?.cast)) clip.cast = [...source.cast];
+        if (source?.window) clip.window = source.window;
+        if (source?.mode) clip.mode = source.mode;
+        if (source?.context && typeof source.context === "object") {
+            clip.context = { ...JSON.parse(JSON.stringify(source.context)), from: "previous" };
+        }
+        insertClip(clip);
+    }
+
+    function addRouteClip() {
+        const clip = freshClip((documentModel.clips ?? []).length);
+        clip.id = uniqueClipId(`clip_${(documentModel.clips ?? []).length + 1}`);
+        clip.context = "none";
+        delete clip.location;
+        delete clip.cast;
+        insertClip(clip);
     }
 
     function addClip() {
@@ -845,7 +989,7 @@ function buildEditor(node) {
             setWidgetValue(node, "run_selection", JSON.stringify(ids));
             const regenerating = regenerateMode;
             setStatus(`${regenerating ? "reopening" : "checking"} ${scope} scope…`);
-            const found = await post(regenerating
+            let found = await post(regenerating
                 ? "/obvpm/h3/batch_regenerate"
                 : "/obvpm/h3/batch_status", {
                 manifest_yaml: widgetValue(node, "manifest_yaml"),
@@ -859,14 +1003,46 @@ function buildEditor(node) {
                 if (check) check.checked = false;
                 root.querySelector(".h3be-regenerate")?.classList.remove("on");
             }
+            // A clip-only run is deliberately preview-only. If that clip was
+            // already checkpointed, reopen just it automatically so changing
+            // the batch id or enabling the replacement checkbox is not needed
+            // for ordinary preview iteration.
+            if (!found.remaining && scope === "clip" && !regenerating) {
+                found = await post("/obvpm/h3/batch_regenerate", {
+                    manifest_yaml: widgetValue(node, "manifest_yaml"),
+                    batch_id: widgetValue(node, "batch_id"),
+                    base_folder: inputValue(node, "base_folder"),
+                    run_selection: ids,
+                });
+            }
             if (!found.remaining) {
                 setStatus(`${scope} already complete (${found.completed}/${found.total}); enable “regenerate existing takes” to replace it`);
                 return;
             }
             setStatus(`queueing ${found.remaining} ${regenerating ? "replacement " : ""}${found.remaining === 1 ? "clip" : "clips"}…`);
-            const queued = await app.queuePrompt(0, found.remaining);
+            const commitNode = (app.graph?._nodes ?? [])
+                .find((one) => one.type === "H3BatchCommit");
+            const commitWidget = commitNode?.widgets?.find(
+                (one) => one.name === "add_to_timeline");
+            const previousTimelineSetting = commitWidget?.value;
+            if (commitWidget) {
+                // Only sections and movies are committed directly to the
+                // timeline. A single clip remains in Result Preview until
+                // the user explicitly syncs it.
+                commitWidget.value = scope !== "clip";
+                commitWidget.callback?.(commitWidget.value);
+            }
+            let queued;
+            try {
+                queued = await app.queuePrompt(0, found.remaining);
+            } finally {
+                if (commitWidget && previousTimelineSetting !== undefined) {
+                    commitWidget.value = previousTimelineSetting;
+                    commitWidget.callback?.(previousTimelineSetting);
+                }
+            }
             if (queued === false) throw new Error("ComfyUI did not queue the selection");
-            setStatus(`queued ${found.remaining}${regenerating ? " for regeneration" : ""} · results will be ${regenerating ? "replaced in" : "added to"} Timeline`);
+            setStatus(`queued ${found.remaining}${regenerating ? " for regeneration" : ""} · results will be ${scope === "clip" ? "stay in preview" : "be added to Timeline"}`);
         } catch (error) {
             console.error("[obvpm h3] scoped generation failed", error);
             setStatus(error.message || String(error), true);

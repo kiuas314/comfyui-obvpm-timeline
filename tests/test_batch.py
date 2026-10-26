@@ -370,6 +370,18 @@ class BatchTests(unittest.TestCase):
         self.assertIn("summary:\nMara returns during one stormy night. "
                       "Mara crosses the dome. Then she stops.", prompt)
 
+    def test_location_reference_images_are_selected_for_clip(self):
+        data = self.structured_manifest()
+        data["locations"]["dome"]["reference_images"] = [3]
+        parsed = self.batch.parse_manifest(json.dumps(data))
+        self.assertEqual(parsed["clips"][0]["reference_images"], [3])
+
+    def test_reference_selector_only_emits_active_picture_slots(self):
+        selector = self.batch.H3BatchReferenceSelect()
+        selected = selector.select(json.dumps([3]), image_0="one", image_2="three")
+        self.assertIsNone(selected[0])
+        self.assertEqual(selected[2], "three")
+
     def test_forward_context_is_refused(self):
         data = self.manifest()
         data["clips"][0]["context"] = "middle"

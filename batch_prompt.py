@@ -18,7 +18,7 @@ PROJECT_FIELDS = {
 CHARACTER_FIELDS = {
     "name", "speaker_id", "reference_image", "appearance", "wardrobe", "voice",
 }
-LOCATION_FIELDS = {"description", "soundscape"}
+LOCATION_FIELDS = {"description", "soundscape", "reference_images"}
 AUDIO_FIELDS = {"default_soundscape", "default_music", "music"}
 STRUCTURED_DEFAULT_FIELDS = {"cast", "location", "music", "camera", "soundscape"}
 STRUCTURED_CLIP_FIELDS = {
@@ -139,8 +139,31 @@ def normalize_globals(root):
             value = {"description": value}
         loc = _mapping(value, "location %r" % loc_id)
         _unknown(loc, LOCATION_FIELDS, "location %r" % loc_id)
-        locations[loc_id] = {field: _clean(loc.get(field))
-                             for field in LOCATION_FIELDS}
+        references = loc.get("reference_images", [])
+        if references is None:
+            references = []
+        if isinstance(references, (int, str)):
+            references = [references]
+        if not isinstance(references, list):
+            raise ValueError("H3 batch: location %r reference_images must be "
+                             "a list of Picture numbers." % loc_id)
+        normalized_refs = []
+        for picture in references:
+            try:
+                picture = int(picture)
+            except (TypeError, ValueError):
+                raise ValueError("H3 batch: location %r reference_images must "
+                                 "contain Picture numbers 1-9." % loc_id)
+            if not 1 <= picture <= 9:
+                raise ValueError("H3 batch: location %r reference_images must "
+                                 "contain Picture numbers 1-9." % loc_id)
+            if picture not in normalized_refs:
+                normalized_refs.append(picture)
+        locations[loc_id] = {
+            "description": _clean(loc.get("description")),
+            "soundscape": _clean(loc.get("soundscape")),
+            "reference_images": normalized_refs,
+        }
 
     audio = _mapping(root.get("audio"), "audio")
     _unknown(audio, AUDIO_FIELDS, "audio")
@@ -172,7 +195,7 @@ def _cast(value, characters, where):
 
 def _location(value, locations, where):
     if value is None or value == "":
-        return {"description": "", "soundscape": ""}
+        return {"description": "", "soundscape": "", "reference_images": []}
     if isinstance(value, str):
         key = value.strip()
         if key not in locations:
@@ -181,7 +204,25 @@ def _location(value, locations, where):
         return dict(locations[key])
     loc = _mapping(value, where)
     _unknown(loc, LOCATION_FIELDS, where)
-    return {field: _clean(loc.get(field)) for field in LOCATION_FIELDS}
+    return {
+        "description": _clean(loc.get("description")),
+        "soundscape": _clean(loc.get("soundscape")),
+        "reference_images": list(loc.get("reference_images") or []),
+    }
+
+
+def reference_images_for_clip(globals_, clip, defaults):
+    """Return 1-based Picture slots needed by a clip's cast and location."""
+    location = _location(clip.get("location", defaults.get("location")),
+                         globals_["locations"], "clip location")
+    refs = set(location.get("reference_images") or [])
+    cast = _cast(clip.get("cast", defaults.get("cast")),
+                 globals_["characters"], "clip cast")
+    for char_id in cast:
+        picture = globals_["characters"][char_id].get("reference_image")
+        if picture:
+            refs.add(int(picture))
+    return sorted(refs)
 
 
 def _camera(value, base=None, where="camera"):
