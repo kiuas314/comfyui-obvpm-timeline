@@ -32,6 +32,11 @@ same-position take as its replacement target. Moved clips have their checkpoint
 positions reconciled, and removed clip IDs are retired from the checkpoint, so
 a screenplay restructure cannot trap the batch behind stale state.
 
+The `batch_id` identifies the output/checkpoint stream; it does not lock the
+manifest text. You can edit prompts, locations, context, or clip counts between
+takes. Completed clips with matching IDs are retained, while new or changed
+work is planned from the latest pasted manifest.
+
 The node is prefilled with a short castle smoke test. `castle_establishing`
 uses `context: none`; `ballroom_dance` starts a second independent root; and
 `dance_to_kiss` uses `context: previous` to inherit the dance before ending on

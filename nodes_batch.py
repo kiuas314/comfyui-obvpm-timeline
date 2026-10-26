@@ -432,7 +432,8 @@ def _new_state(batch_id, manifest_hash, manifest_source):
     }
 
 
-def _validated_state(path, batch_id, manifest_hash, manifest_source):
+def _validated_state(path, batch_id, manifest_hash, manifest_source,
+                     sync_manifest=True):
     state = _read_state(path)
     if state is None:
         state = _new_state(batch_id, manifest_hash, manifest_source)
@@ -442,11 +443,15 @@ def _validated_state(path, batch_id, manifest_hash, manifest_source):
                          % path)
     if state.get("batch_id") != batch_id:
         raise ValueError("H3 batch: checkpoint id mismatch at %s." % path)
-    if state.get("manifest_hash") != manifest_hash:
-        raise ValueError(
-            "H3 batch: this manifest changed after batch %r started. Use a "
-            "new batch_id to start the revised film; the existing takes "
-            "and checkpoint were left untouched." % batch_id)
+    if sync_manifest and state.get("manifest_hash") != manifest_hash:
+        # The batch ID identifies the output/checkpoint stream, not an
+        # immutable screenplay. Keep completed clips that still have matching
+        # IDs, but let later pasted YAML change prompts, context, and length.
+        state["manifest_hash"] = manifest_hash
+        state["manifest_source"] = manifest_source
+        state["final_path"] = ""
+        state.pop("export_error", None)
+        _write_state(path, state)
     return state
 
 
@@ -954,7 +959,7 @@ class H3BatchCommit:
         previous_path = str(item.get("replace_path") or "")
         with _LOCK:
             state = _validated_state(state_path, item["batch_id"], digest,
-                                     source)
+                                     source, sync_manifest=False)
             active = state.get("active") or {}
             if (active.get("id") != item.get("clip_id")
                     or int(active.get("index", -1)) != int(item.get("index", -2))):
@@ -994,7 +999,8 @@ class H3BatchCommit:
                     preview_name, export_filename_prefix)
                 with _LOCK:
                     state = _validated_state(
-                        state_path, item["batch_id"], digest, source)
+                        state_path, item["batch_id"], digest, source,
+                        sync_manifest=False)
                     state["final_path"] = final_path
                     state.pop("export_error", None)
                     _write_state(state_path, state)
@@ -1008,7 +1014,8 @@ class H3BatchCommit:
                                "export failed", item["batch_id"])
                 with _LOCK:
                     state = _validated_state(
-                        state_path, item["batch_id"], digest, source)
+                        state_path, item["batch_id"], digest, source,
+                        sync_manifest=False)
                     state["export_error"] = export_error
                     _write_state(state_path, state)
         status = {

@@ -480,13 +480,30 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(second[0], "B")
         self.assertEqual(second[2], 41)
 
-    def test_changed_pasted_yaml_does_not_reuse_checkpoint(self):
+    def test_changed_pasted_yaml_reuses_checkpoint_by_clip_id(self):
         planner = self.batch.H3BatchPlan()
         planner.plan(json.dumps(self.manifest()), "inline-v2", "inline-movie", 0)
         changed = self.manifest()
         changed["clips"][0]["prompt"] = "changed"
-        with self.assertRaisesRegex(ValueError, "manifest changed"):
-            planner.plan(json.dumps(changed), "inline-v2", "inline-movie", 0)
+        # The active clip is still in progress; changing its prompt should not
+        # force a new batch id or strand the checkpoint.
+        revised = planner.plan(json.dumps(changed), "inline-v2", "inline-movie", 0)
+        self.assertEqual(revised[0], "changed")
+        state = self.batch._read_state(
+            self.batch._state_path("inline-movie", "inline-v2"))
+        self.assertEqual(state["manifest_source"], "<pasted YAML>")
+
+    def test_changed_manifest_can_continue_after_committed_clip(self):
+        planner = self.batch.H3BatchPlan()
+        commit = self.batch.H3BatchCommit()
+        original = json.dumps(self.manifest())
+        first = planner.plan(original, "inline-v3", "inline-movie", 0)
+        commit.commit(self.saved_take("inline-movie/opening_00001.mp4"),
+                      first[8], auto_export=False)
+        changed = self.manifest()
+        changed["clips"][1]["prompt"] = "revised middle"
+        second = planner.plan(json.dumps(changed), "inline-v3", "inline-movie", 0)
+        self.assertEqual(second[0], "revised middle")
 
     def test_explicit_regeneration_reopens_and_replaces_completed_take(self):
         manifest = self.manifest()
