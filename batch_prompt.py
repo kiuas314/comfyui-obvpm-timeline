@@ -16,7 +16,8 @@ PROJECT_FIELDS = {
     "continuity", "negative_prompt",
 }
 CHARACTER_FIELDS = {
-    "name", "speaker_id", "reference_image", "appearance", "wardrobe", "voice",
+    "name", "speaker_id", "reference_image", "reference_images",
+    "appearance", "wardrobe", "voice",
 }
 LOCATION_FIELDS = {"description", "soundscape", "reference_images"}
 AUDIO_FIELDS = {"default_soundscape", "default_music", "music"}
@@ -99,26 +100,37 @@ def normalize_globals(root):
         char = _mapping(value, "character %r" % char_id)
         _unknown(char, CHARACTER_FIELDS, "character %r" % char_id)
         char = {field: _clean(char.get(field)) for field in CHARACTER_FIELDS
-                if field != "reference_image"}
-        reference_image = value.get("reference_image")
-        if reference_image in (None, ""):
-            reference_image = None
+                if field not in ("reference_image", "reference_images")}
+        raw_refs = value.get("reference_images")
+        if raw_refs in (None, ""):
+            raw_refs = value.get("reference_image")
+        if raw_refs in (None, ""):
+            refs = []
+        elif isinstance(raw_refs, (list, tuple)):
+            refs = list(raw_refs)
         else:
+            refs = [raw_refs]
+        normalized_refs = []
+        for raw_ref in refs:
             try:
-                reference_image = int(reference_image)
+                picture = int(raw_ref)
             except (TypeError, ValueError):
-                raise ValueError("H3 batch: character %r reference_image must "
-                                 "be a picture number from 1 to 9." % char_id)
-            if not 1 <= reference_image <= 9:
-                raise ValueError("H3 batch: character %r reference_image must "
-                                 "be a picture number from 1 to 9." % char_id)
-            if reference_image in reference_images:
+                raise ValueError("H3 batch: character %r reference_images must "
+                                 "contain picture numbers from 1 to 9." % char_id)
+            if not 1 <= picture <= 9:
+                raise ValueError("H3 batch: character %r reference_images must "
+                                 "contain picture numbers from 1 to 9." % char_id)
+            if picture in normalized_refs:
+                continue
+            if picture in reference_images:
                 raise ValueError(
                     "H3 batch: characters %r and %r both use Picture %d."
-                    % (reference_images[reference_image], char_id,
-                       reference_image))
-            reference_images[reference_image] = char_id
-        char["reference_image"] = reference_image
+                    % (reference_images[picture], char_id, picture))
+            reference_images[picture] = char_id
+            normalized_refs.append(picture)
+        char["reference_images"] = normalized_refs
+        # Keep the singular field in normalized manifests for old workflows.
+        char["reference_image"] = normalized_refs[0] if normalized_refs else None
         char["name"] = char["name"] or char_id.replace("_", " ").title()
         sid = char["speaker_id"].strip("()")
         if sid and not _SPEAKER_RE.match(sid):
@@ -219,9 +231,11 @@ def reference_images_for_clip(globals_, clip, defaults):
     cast = _cast(clip.get("cast", defaults.get("cast")),
                  globals_["characters"], "clip cast")
     for char_id in cast:
-        picture = globals_["characters"][char_id].get("reference_image")
-        if picture:
-            refs.add(int(picture))
+        character = globals_["characters"][char_id]
+        pictures = character.get("reference_images") or []
+        if not pictures and character.get("reference_image"):
+            pictures = [character["reference_image"]]
+        refs.update(int(picture) for picture in pictures)
     return sorted(refs)
 
 
@@ -286,20 +300,14 @@ def _character(char_id, globals_, overrides):
     _unknown(override, CHARACTER_FIELDS,
              "character_overrides.%s" % char_id)
     for key, value in override.items():
-        if key in ("speaker_id", "reference_image"):
+        if key in ("speaker_id", "reference_image", "reference_images"):
             raise ValueError("H3 batch: character_overrides cannot change a "
                              "stable speaker_id or reference_image.")
         char[key] = _clean(value)
     return char
 
 
-def _character_definition(char):
-    if char.get("reference_image"):
-        label = "<Subject %d> (%s)" % (char["reference_image"], char["name"])
-    else:
-        label = char["name"]
-    if char.get("speaker_id"):
-        label += " (%s)" % char["speaker_id"]
+def _character_visual_description(char):
     parts = []
     if char.get("appearance"):
         parts.append(char["appearance"])
@@ -308,11 +316,25 @@ def _character_definition(char):
     if char.get("voice") and char.get("speaker_id"):
         parts.append("speaking with " + char["voice"])
     if not parts:
-        return label + "."
+        return ""
     if len(parts) == 1:
-        description = parts[0]
+        return parts[0]
+    return ", ".join(parts[:-1]) + ", and " + parts[-1]
+
+
+def _character_definition(char):
+    refs = char.get("reference_images") or []
+    if not refs and char.get("reference_image"):
+        refs = [char["reference_image"]]
+    if refs:
+        label = "<Subject %d> (%s)" % (refs[0], char["name"])
     else:
-        description = ", ".join(parts[:-1]) + ", and " + parts[-1]
+        label = char["name"]
+    if char.get("speaker_id"):
+        label += " (%s)" % char["speaker_id"]
+    description = _character_visual_description(char)
+    if not description:
+        return label + "."
     return "%s is %s." % (label, description)
 
 
@@ -442,7 +464,7 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
                   location["description"]]
         for char_id in cast:
             character = _character(char_id, globals_, overrides)
-            if not character.get("reference_image"):
+            if not (character.get("reference_images") or character.get("reference_image")):
                 pieces.append(_character_definition(character))
         pieces.append(detailed.strip())
         paragraphs.append(" ".join(one for one in pieces if one))
@@ -496,7 +518,7 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
             for char_id in shot_cast:
                 if char_id not in defined:
                     character = _character(char_id, globals_, overrides)
-                    if not character.get("reference_image"):
+                    if not (character.get("reference_images") or character.get("reference_image")):
                         pieces.append(_character_definition(character))
                     defined.add(char_id)
             framing = _clean(shot.get("framing"))
@@ -537,17 +559,29 @@ def compile_prompt(globals_, clip, defaults, context, duration, clip_id):
     reference_retention = []
     for char_id in sorted(
             defined,
-            key=lambda one: (globals_["characters"][one].get(
-                "reference_image") or 999, one)):
+            key=lambda one: ((globals_["characters"][one].get(
+                "reference_images") or [globals_["characters"][one].get(
+                    "reference_image") or 999])[0], one)):
         char = _character(char_id, globals_, overrides)
-        picture = char.get("reference_image")
-        if picture:
-            subjects.append("<Subject %d> is %s depicted in <Picture %d>."
-                            % (picture, char["name"], picture))
-            reference_retention.append(
-                "Retain <Subject %d> identity and visual characteristics "
-                "from <Picture %d>; do not replace them with a textual "
-                "appearance." % (picture, picture))
+        pictures = char.get("reference_images") or []
+        if not pictures and char.get("reference_image"):
+            pictures = [char["reference_image"]]
+        if pictures:
+            first = pictures[0]
+            picture_text = " and ".join("<Picture %d>" % picture
+                                        for picture in pictures)
+            subjects.append("<Subject %d> is %s depicted in %s."
+                            % (first, char["name"], picture_text))
+            visual = _character_visual_description(char)
+            if visual:
+                subjects.append("Visual definition for <Subject %d>: %s."
+                                % (first, visual))
+            for picture in pictures:
+                reference_retention.append(
+                    "Retain <Subject %d> identity and visual characteristics "
+                    "from <Picture %d>; do not replace them with a textual "
+                    "appearance. Use the textual visual definition only to "
+                    "reinforce the reference." % (first, picture))
     subject_text = "\n".join(subjects) if subjects else "N/A"
     summary_override = clip.get("summary")
     if summary_override is not None:

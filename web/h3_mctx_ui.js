@@ -2197,7 +2197,7 @@ const TL_GAP_RE = /^~\s*(\d+)$/;
 // its first. Mirrors _LOOP_RE / sequence_loops. Not an entry: every
 // index map over the raw lines must skip it the way it skips comments,
 // or a cut lands one line off.
-const TL_LOOP_RE = /^loop$/i;
+const TL_LOOP_RE = /^loop(?:\s+(?:[2-9]|[1-9]\d{1,3}))?$/i;
 const TL_LOOP_LINE = "loop";
 function tlSequenceLoops(text) {
     return String(text || "").split("\n")
@@ -3910,7 +3910,17 @@ app.registerExtension({
             loopBtn.addEventListener("mouseleave", paintLoop);
             loopBtn.addEventListener("click", () => {
                 if (!loopOn() && !loopPossible) return;
-                setLoop(!loopOn());
+                if (loopOn()) {
+                    setLoop(false);
+                    return;
+                }
+                const answer = window.prompt(
+                    "How many times should this timeline repeat? (1 = one loop turn)",
+                    "1");
+                if (answer === null) return;
+                const turns = Math.max(1, Math.min(9999,
+                    Number.parseInt(answer, 10) || 1));
+                setLoop(true, turns);
             });
             paintLoop();
 
@@ -5097,10 +5107,10 @@ app.registerExtension({
             // The directive's one writer. It rides as the FIRST line, so
             // a glance at the text says the cut is a ring before it says
             // what is in it; reading accepts it anywhere.
-            function setLoop(on) {
+            function setLoop(on, turns = 1) {
                 const kept = currentLines().filter(
                     (raw) => !TL_LOOP_RE.test(raw.trim()));
-                if (on) kept.unshift(TL_LOOP_LINE);
+                if (on) kept.unshift(turns > 1 ? `loop ${turns}` : TL_LOOP_LINE);
                 setSequence(kept.join("\n"));
             }
             // One writer for cuts, going through the same formatter the

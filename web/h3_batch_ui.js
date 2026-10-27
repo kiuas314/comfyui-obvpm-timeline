@@ -521,6 +521,36 @@ function buildEditor(node) {
         return wrap;
     }
 
+    function characterReferencesField(character) {
+        const wrap = el("label", "", "Reference pictures (sheet, face, ...)");
+        const control = el("input");
+        control.type = "text";
+        const refs = Array.isArray(character.reference_images)
+            ? character.reference_images
+            : (character.reference_image ? [character.reference_image] : []);
+        control.value = refs.join(", ");
+        control.placeholder = "e.g. 1, 2";
+        control.addEventListener("input", () => {
+            const values = control.value.split(",")
+                .map((value) => Number(value.trim()))
+                .filter((value) => Number.isInteger(value) && value >= 1 && value <= 9);
+            const unique = [...new Set(values)];
+            if (unique.length) {
+                character.reference_images = unique;
+                // Preserve the legacy singular field for older workflows.
+                character.reference_image = unique[0];
+            }
+            else {
+                delete character.reference_images;
+                delete character.reference_image;
+            }
+            scheduleSerialize();
+        });
+        wrap.append(control);
+        wrap.append(el("p", "h3be-note", "Use Picture 1–9. The first slot is the subject anchor; additional slots can be a character sheet or close-up face reference."));
+        return wrap;
+    }
+
     function characterIsUsed(characterId) {
         const usedBy = [];
         for (const clip of documentModel.clips ?? []) {
@@ -564,7 +594,7 @@ function buildEditor(node) {
             grid.append(
                 characterField(character, "name", "Display name", { placeholder: "Princess Elara" }),
                 characterField(character, "speaker_id", "Speaker ID", { placeholder: "S1" }),
-                characterField(character, "reference_image", "Reference picture", { number: true, placeholder: "1–9" }),
+                characterReferencesField(character),
                 characterField(character, "appearance", "Appearance", { long: true, wide: true }),
                 characterField(character, "wardrobe", "Wardrobe", { long: true, wide: true }),
                 characterField(character, "voice", "Voice", { long: true, wide: true }));

@@ -60,8 +60,11 @@ particular clip:
   the negative prompt.
 - `characters` is the character bible. A speaking character has one stable
   `speaker_id` (`S1`, `S2`, etc.) for the whole film. For Ref2V, assign
-  `reference_image: 1` to the character shown in Picture 1,
-  `reference_image: 2` for Picture 2, and so on.
+  `reference_images: [1, 2]` to give one character both a character sheet and
+  a face close-up. The older singular `reference_image: 1` form remains
+  supported. Picture slots are routed automatically when that character is
+  cast, and the character's appearance/wardrobe/voice are included in the
+  generated `subject_definitions` section.
 - `locations` holds reusable visual and ambient-sound descriptions plus optional
   `reference_images` Picture slots. Those images are routed only when a clip
   selects that location.

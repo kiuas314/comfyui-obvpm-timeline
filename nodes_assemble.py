@@ -188,20 +188,32 @@ def format_seam_opts(opts, part=None):
     return " [%s]" % " ".join(parts) if parts else ""
 
 
-# The one directive a sequence may carry. `loop` makes the cut a RING:
+# The one directive a sequence may carry. `loop` makes the cut a RING;
+# `loop N` repeats the listed entries N times before closing that ring.
 # its last entry is joined to its first exactly as neighbours are, so
 # the export ends where its own opening begins and a player set to
 # repeat wraps onto continuous motion. It is a property of the cut and
 # so lives in the cut's text, beside the clips and gaps it applies to
 # -- a widget or property for it would be a second store for one fact.
-LOOP_RE = re.compile(r"^loop$", re.IGNORECASE)
+LOOP_RE = re.compile(r"^loop(?:\s+(?P<count>[2-9]|[1-9][0-9]{1,3}))?$",
+                     re.IGNORECASE)
 LOOP_LINE = "loop"
 
 
 def sequence_loops(sequence):
-    """Does the sequence text carry the `loop` directive?"""
+    """Does the sequence text carry a loop directive?"""
     return any(LOOP_RE.match(raw.strip())
                for raw in (sequence or "").splitlines())
+
+
+def sequence_loop_count(sequence):
+    """Return the requested number of turns (1 means one normal turn)."""
+    count = 1
+    for raw in (sequence or "").splitlines():
+        match = LOOP_RE.match(raw.strip())
+        if match:
+            count = max(count, int(match.group("count") or 1))
+    return count
 
 
 def _parse_sequence(sequence):
@@ -241,6 +253,11 @@ def _parse_sequence(sequence):
                     "enter_override": None if enter is None else int(enter),
                     "exit_override": None if exit_ is None else int(exit_),
                     "seam_opts": seam, "part": part})
+    repeat = sequence_loop_count(sequence)
+    if repeat > 1 and out:
+        original = [dict(entry) for entry in out]
+        for _ in range(repeat - 1):
+            out.extend(dict(entry) for entry in original)
     return out
 
 
