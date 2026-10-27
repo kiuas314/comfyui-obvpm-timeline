@@ -98,6 +98,11 @@ For fully manifest-controlled switching, leave the global Power Loader empty,
 put common LoRAs in `defaults.content_loras`, and override them per clip. An
 explicit empty list disables the defaults for that scene:
 
+In the visual clip editor, **Scene content LoRAs** is a preset dropdown with a
+per-entry strength control, enabled checkbox, and remove button. Define the
+presets once in the Story globals `lora_library`; the editor writes the same
+portable YAML entries shown below.
+
 ```yaml
 lora_library:
   fantasy_light:

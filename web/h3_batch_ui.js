@@ -24,7 +24,7 @@ const CLIP_FIELDS = [
     ["window", "Context window", "text", "5, 22, 39, or 56"],
     ["mode", "Pin mode", "text", "masked, guide, or both"],
     ["metadata", "Metadata", "json", "Extra JSON object stored with the take"],
-    ["content_loras", "Scene content LoRAs", "json", "List of named presets or {name, strength, enabled} entries; [] disables defaults"],
+    ["content_loras", "Scene content LoRAs", "loras", "Choose scene LoRAs and tune their strength; an empty list disables defaults"],
 ];
 
 function widget(node, name) {
@@ -107,6 +107,7 @@ function installStyle() {
       .h3be-cast{display:flex;flex-direction:column;gap:6px}.h3be-castadd{display:flex;gap:7px}.h3be-castadd select{flex:1}
       .h3be-chiprow{display:flex;gap:6px;align-items:center;padding:5px 7px;border-radius:4px;background:#191d23;border:1px solid #363e49}
       .h3be-chiprow span{flex:1}.h3be-chiprow button{padding:1px 7px;border:0;background:transparent;color:#ffb0aa}
+      .h3be-loras{display:flex;flex-direction:column;gap:6px}.h3be-lorarow,.h3be-loraadd{display:grid;grid-template-columns:minmax(0,1fr) 86px 24px auto;gap:6px;align-items:center}.h3be-loraadd{grid-template-columns:minmax(0,1fr) 86px auto}.h3be-lorarow input[type=checkbox]{width:18px;height:18px}.h3be-lorarow button{padding:1px 7px;border:0;background:transparent;color:#ffb0aa}
       .h3be-characters{display:flex;flex-direction:column;gap:9px}.h3be-character{border:1px solid #3b4653;border-radius:7px;padding:10px;background:#252a32}
       .h3be-characterhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}.h3be-characterhead strong{font:650 14px ui-monospace,SFMono-Regular,monospace;color:#9fdcf2}
       .h3be-charactergrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.h3be-charactergrid label{display:block;margin:0;color:#b9c2cd;font-size:11px;font-weight:600}
@@ -272,8 +273,104 @@ function buildEditor(node) {
         }
     }
 
+    function loraControl(clip, key) {
+        const control = el("div", "h3be-loras");
+        const raw = Array.isArray(clip[key]) ? clip[key] : [];
+        const presets = new Set(Object.keys(documentModel.lora_library ?? {}));
+        for (const source of [raw, documentModel.defaults?.[key] ?? []]) {
+            for (const entry of (Array.isArray(source) ? source : [source])) {
+                if (typeof entry === "string") presets.add(entry);
+                else if (entry && typeof entry === "object") {
+                    if (entry.preset) presets.add(entry.preset);
+                    if (entry.name) presets.add(entry.name);
+                }
+            }
+        }
+        const choices = [...presets].filter(Boolean).sort();
+        const normalized = (entry) => {
+            if (typeof entry === "string") return { preset: entry, strength: 1, enabled: true };
+            return {
+                ...entry,
+                strength: Number(entry?.strength ?? 1),
+                enabled: entry?.enabled !== false,
+            };
+        };
+        const save = () => { scheduleSerialize(); };
+        raw.forEach((entry, index) => {
+            const spec = normalized(entry);
+            raw[index] = spec;
+            const row = el("div", "h3be-lorarow");
+            const select = el("select");
+            const placeholder = el("option", "", choices.length ? "Select LoRA…" : "Add a preset in lora_library first");
+            placeholder.value = "";
+            select.append(placeholder);
+            for (const name of choices) {
+                const option = el("option", "", name);
+                option.value = name;
+                option.selected = name === (spec.preset || spec.name);
+                select.append(option);
+            }
+            const strength = el("input");
+            strength.type = "number";
+            strength.step = "0.05";
+            strength.min = "-20";
+            strength.max = "20";
+            strength.value = spec.strength;
+            const enabled = el("input");
+            enabled.type = "checkbox";
+            enabled.checked = spec.enabled;
+            select.addEventListener("change", () => {
+                delete spec.name;
+                spec.preset = select.value;
+                save();
+            });
+            strength.addEventListener("input", () => {
+                spec.strength = Number(strength.value);
+                save();
+            });
+            enabled.addEventListener("change", () => {
+                spec.enabled = enabled.checked;
+                save();
+            });
+            row.append(select, strength, enabled,
+                button("×", "Remove this scene LoRA", () => {
+                    raw.splice(index, 1);
+                    renderClipPane();
+                    save();
+                }, "danger"));
+            control.append(row);
+        });
+        const addRow = el("div", "h3be-loraadd");
+        const addSelect = el("select");
+        const addPlaceholder = el("option", "", choices.length ? "Add scene LoRA…" : "No LoRA presets available");
+        addPlaceholder.value = "";
+        addSelect.append(addPlaceholder);
+        for (const name of choices) {
+            const option = el("option", "", name);
+            option.value = name;
+            addSelect.append(option);
+        }
+        const addStrength = el("input");
+        addStrength.type = "number";
+        addStrength.step = "0.05";
+        addStrength.min = "-20";
+        addStrength.max = "20";
+        addStrength.value = "1";
+        const add = button("add", "Add this LoRA to the scene", () => {
+            if (!addSelect.value) return;
+            raw.push({ preset: addSelect.value, strength: Number(addStrength.value), enabled: true });
+            renderClipPane();
+            save();
+        });
+        add.disabled = true;
+        addSelect.addEventListener("change", () => { add.disabled = !addSelect.value; });
+        addRow.append(addSelect, addStrength, add);
+        control.append(addRow);
+        return control;
+    }
+
     function fieldControl(clip, key, label, kind, help, removable = true) {
-        const wide = kind === "json" || kind === "long" || kind === "cast";
+        const wide = kind === "json" || kind === "long" || kind === "cast" || kind === "loras";
         const wrap = el("div", "h3be-field" + (wide ? " wide" : ""));
         const heading = el("div", "h3be-fieldhead");
         heading.append(document.createTextNode(label));
@@ -327,6 +424,8 @@ function buildEditor(node) {
             select.addEventListener("change", () => { add.disabled = !select.value; });
             addRow.append(select, add);
             control.append(addRow);
+        } else if (kind === "loras") {
+            control = loraControl(clip, key);
         } else if (kind === "location") {
             control = el("select");
             const inline = typeof value === "object" && value !== null;
@@ -389,7 +488,7 @@ function buildEditor(node) {
             control.classList.remove("h3be-jsonbad");
             scheduleSerialize();
         };
-        if (kind !== "cast") {
+        if (kind !== "cast" && kind !== "loras") {
             control.addEventListener(["context", "location"].includes(kind)
                 ? "change" : "input", update);
         }
